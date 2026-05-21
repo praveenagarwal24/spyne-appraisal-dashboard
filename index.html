@@ -76,12 +76,12 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .kpi{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s;}
 .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.4);}
 .kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
-.k1::after{background:linear-gradient(90deg,var(--ac),transparent);} .k2::after{background:linear-gradient(90deg,var(--ac3),transparent);}
-.k3::after{background:linear-gradient(90deg,var(--ac4),transparent);} .k4::after{background:linear-gradient(90deg,var(--ac2),transparent);}
+.k1::after{background:linear-gradient(90deg,var(--ac),transparent);} .k2::after{background:linear-gradient(90deg,var(--ac4),transparent);}
+.k3::after{background:linear-gradient(90deg,var(--ac2),transparent);} .k4::after{background:linear-gradient(90deg,var(--ac2),transparent);}
 .k5::after{background:linear-gradient(90deg,var(--red),transparent);} .k6::after{background:linear-gradient(90deg,var(--ac5),transparent);}
 .kl{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:var(--mu);margin-bottom:7px;font-family:'DM Mono',monospace;}
 .kv{font-weight:700;font-size:26px;line-height:1;margin-bottom:3px;}
-.k1 .kv{color:var(--ac);} .k2 .kv{color:var(--ac3);} .k3 .kv{color:var(--ac4);}
+.k1 .kv{color:var(--ac);} .k2 .kv{color:var(--ac4);} .k3 .kv{color:var(--ac2);}
 .k4 .kv{color:var(--ac2);} .k5 .kv{color:var(--red);} .k6 .kv{color:var(--ac5);}
 .ks{font-size:10px;color:var(--mu);}
 
@@ -160,8 +160,8 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 .edc{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:24px;}
 .ehero{display:flex;gap:18px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--b1);}
 .ephW{position:relative;flex-shrink:0;}
-.eph{width:82px;height:82px;border-radius:14px;object-fit:cover;border:2px solid var(--b1);background:var(--s2);display:block;}
-.eini{width:82px;height:82px;border-radius:14px;background:linear-gradient(135deg,var(--s2),var(--s3));border:2px solid var(--b1);display:flex;align-items:center;justify-content:center;font-family:'DM Sans',sans-serif;font-weight:700;font-size:30px;color:var(--ac);}
+.eph{width:120px;height:120px;border-radius:16px;object-fit:cover;border:2px solid var(--b1);background:var(--s2);display:block;}
+.eini{width:120px;height:120px;border-radius:16px;background:linear-gradient(135deg,var(--s2),var(--s3));border:2px solid var(--b1);display:flex;align-items:center;justify-content:center;font-family:'DM Sans',sans-serif;font-weight:700;font-size:40px;color:var(--ac);}
 .esd{position:absolute;bottom:4px;right:4px;width:13px;height:13px;border-radius:50%;border:2px solid var(--s1);}
 .esdY{background:var(--ac3);} .esdN{background:var(--red);}
 .ehN{font-family:'Playfair Display',serif;font-weight:700;font-size:20px;margin-bottom:3px;}
@@ -265,7 +265,7 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
       <div class="sb-div"></div>
       <div class="sb-sec" style="padding:4px 0 4px 0">Drill Down</div>
       <div class="sbi" onclick="goPg('drill',this);ddTab(null,'dd-r')"><span class="ic">⭐</span>By Rating</div>
-      <div class="sbi" onclick="goPg('drill',this);ddTab(null,'dd-f')"><span class="ic">⚡</span>By Factor</div>
+      <div class="sbi" onclick="goPg('drill',this);ddTab(null,'dd-f')"><span class="ic">⭐</span>By Rating Range</div>
       <div class="sbi" onclick="goPg('drill',this);ddTab(null,'dd-e')"><span class="ic">✅</span>By Eligibility</div>
       <div class="sbi" onclick="goPg('drill',this);ddTab(null,'dd-l')"><span class="ic">🌿</span>By Leaves<span class="bdg b-rd" id="sb-hl">0</span></div>
       <div class="sbi" onclick="goPg('drill',this);ddTab(null,'dd-m')"><span class="ic">🗂</span>Master Sheet<span class="bdg b-gd" id="sb-ms">—</span></div>
@@ -344,7 +344,7 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
       <div class="ph"><div><div class="ptitle">Deep <em>Drill Down</em></div><div class="psub">Final_Appraisal + Master_Sheet · grouped intelligence</div></div></div>
       <div class="ddtabs">
         <button class="ddt on" onclick="ddTab(this,'dd-r')">⭐ By Rating</button>
-        <button class="ddt" onclick="ddTab(this,'dd-f')">⚡ By Factor</button>
+        <button class="ddt" onclick="ddTab(this,'dd-f')">⭐ By Rating Range</button>
         <button class="ddt" onclick="ddTab(this,'dd-e')">✅ By Eligibility</button>
         <button class="ddt" onclick="ddTab(this,'dd-l')">🌿 By Leaves</button>
         <button class="ddt" onclick="ddTab(this,'dd-m')">🗂 Master Sheet</button>
@@ -400,7 +400,7 @@ function finalRating(r){
   var v = AH[17] ? r[AH[17]] : null;
   return v!==null ? N(v) : N(r[C.rating]);
 }
-function ratingDisp(r){ return Math.round(finalRating(r)); }
+function ratingDisp(r){ var v=finalRating(r); return v>0?parseFloat(v.toFixed(2)):0; }
 
 // Weighted score using final rating
 function weightedScore(r){
@@ -591,9 +591,7 @@ function buildAll(){
 function buildKPIs(){
   var d=AD, t=d.length;
   var rs=d.map(function(r){return finalRating(r);}).filter(function(v){return v>0;});
-  var avR=rs.length?(rs.reduce(function(a,b){return a+b;},0)/rs.length).toFixed(1):'—';
-  var ws=d.map(function(r){return weightedScore(r);}).filter(function(v){return v>0;});
-  var avW=ws.length?(ws.reduce(function(a,b){return a+b;},0)/ws.length).toFixed(2):'—';
+  var avR=rs.length?(rs.reduce(function(a,b){return a+b;},0)/rs.length).toFixed(2):'—';
   var hl=d.filter(function(r){return N(r[C.leaves])>=20;}).length;
   var ms=d.map(function(r){return N(r[C.avgMins]);}).filter(function(v){return v>0;});
   var avM=ms.length?Math.round(ms.reduce(function(a,b){return a+b;},0)/ms.length):'—';
@@ -601,8 +599,7 @@ function buildKPIs(){
   var avCTC=ctcArr.length?fmt(Math.round(ctcArr.reduce(function(a,b){return a+b;},0)/ctcArr.length)):'—';
   document.getElementById('kgrid').innerHTML=[
     {c:'k1',l:'Total Employees',v:t,s:'Final_Appraisal'},
-    {c:'k2',l:'Avg W.Score',v:avW,s:'Weighted appraisal'},
-    {c:'k3',l:'Avg Final Rating',v:avR,s:'Column R rating'},
+    {c:'k2',l:'Avg Final Rating',v:avR,s:'Column R rating'},
     {c:'k4',l:'Avg Mins',v:avM,s:'Productive minutes'},
     {c:'k5',l:'High Leaves',v:hl,s:'\u2265 20 days'},
     {c:'k6',l:'Avg CTC',v:avCTC,s:'Annual CTC avg'}
@@ -615,7 +612,7 @@ function buildKPIs(){
 function ratingRows(){
   var rc={1:0,2:0,3:0,4:0,5:0};
   var col={5:'#00e5a0',4:'#00d4ff',3:'#f7c948',2:'#ff6b35',1:'#ff4757'};
-  AD.forEach(function(r){var v=ratingDisp(r);if(v>=1&&v<=5)rc[v]++;});
+  AD.forEach(function(r){var v=Math.round(ratingDisp(r));if(v>=1&&v<=5)rc[v]++;});
   return [5,4,3,2,1].map(function(i){return{l:'\u2605 '+i,v:rc[i],c:col[i]};});
 }
 function factorRows(){
@@ -627,7 +624,7 @@ function factorRows(){
 function ratingDonut(){
   var rc={5:0,4:0,3:0,2:0,1:0};
   var col={5:'#00e5a0',4:'#00d4ff',3:'#f7c948',2:'#ff6b35',1:'#ff4757'};
-  AD.forEach(function(r){var v=ratingDisp(r);if(v>=1&&v<=5)rc[v]++;});
+  AD.forEach(function(r){var v=Math.round(ratingDisp(r));if(v>=1&&v<=5)rc[v]++;});
   return [5,4,3,2,1].filter(function(i){return rc[i]>0;}).map(function(i){return{l:'\u2605'+i,v:rc[i],h:col[i]};});
 }
 function leavesRows(){
@@ -686,8 +683,8 @@ var TC=[
   {l:'CTC (M)',   sk:true,  k:function(){return C.ctcM;},      r:function(r){return '<td class="mu2">'+fmt(r[C.ctcM])+'</td>';}},
   {l:'DOJ',       sk:true,  k:function(){return C.doj;},       r:function(r){return '<td class="mu2">'+(r[C.doj]||'—')+'</td>';}},
   {l:'Avg Mins',  sk:true,  k:function(){return C.avgMins;},   r:function(r){return '<td class="mu2">'+(r[C.avgMins]||'—')+'</td>';}},
-  {l:'Rating',    sk:true,  k:function(){return C.finalRating||C.rating;}, r:function(r){var v=ratingDisp(r);return '<td><div class="rb rb'+(v||0)+'">'+(v||'—')+'</div></td>';}},
-  {l:'W.Score',   sk:true,  k:function(){return C.rating;},   r:function(r){var s=weightedScore(r);var p=(s/5*100).toFixed(0);var c=s>=4?'#00e5a0':s>=3?'#f7c948':s>=2?'#ff6b35':'#ff4757';return '<td><div class="fbar"><span style="font-size:11px;min-width:32px;font-family:DM Mono,monospace;font-weight:700;color:'+c+'">'+(s>0?s.toFixed(1):'—')+'</span><div class="ftr"><div class="ffl" style="width:'+p+'%;background:'+c+'"></div></div></div></td>';}},
+  {l:'Rating',    sk:true,  k:function(){return C.finalRating||C.rating;}, r:function(r){var v=ratingDisp(r);var vi=Math.round(v);return '<td><div class="rb rb'+(vi||0)+'">'+(v>0?v.toFixed(2):'—')+'</div></td>';}},
+
   {l:'Leaves',    sk:true,  k:function(){return C.leaves;},    r:function(r){var v=N(r[C.leaves]);return '<td class="'+(v>=20?'lvhi':'mu2')+'">'+(r[C.leaves]||'0')+(v>=20?' \u26a0':'')+'</td>';}},
   {l:'Lv.Rtg',   sk:true,  k:function(){return C.leaveRating;},r:function(r){return '<td class="mu2">'+(r[C.leaveRating]||'—')+'</td>';}},
   {l:'OT',        sk:true,  k:function(){return C.ot;},        r:function(r){return '<td class="mu2">'+(r[C.ot]||'—')+'</td>';}}
@@ -770,7 +767,7 @@ function ovSrt(i){
 function flt(q,rt,nm){
   return AD.filter(function(r){
     if(q&&!(r[C.name]||'').toLowerCase().includes(q)&&!(r[C.empId]||'').toLowerCase().includes(q)&&!(r[C.email]||'').toLowerCase().includes(q)) return false;
-    if(rt&&ratingDisp(r).toString()!==rt) return false;
+    if(rt&&Math.round(ratingDisp(r)).toString()!==rt) return false;
     if(nm&&r[C.name]!==nm) return false;
     return true;
   });
@@ -812,8 +809,7 @@ function navE(d){
 }
 
 function renderEC(r,idx,tot){
-  var rt=ratingDisp(r), ws=weightedScore(r);
-  var wsC=ws>=4?'#00e5a0':ws>=3?'#f7c948':ws>=2?'#ff6b35':'#ff4757';
+  var rt=ratingDisp(r);
   var mr=getMaster(r[C.empId]);
 
   // Photo
@@ -855,22 +851,15 @@ function renderEC(r,idx,tot){
       +'<div class="ehE">'+(r[C.email]||'—')+'</div>'
       +'<div class="ehtg">'
         +'<span class="tg tgR">\u2605 '+rt+'</span>'
-        +'<span class="tg" style="background:rgba(0,212,255,.1);color:'+wsC+';border:1px solid '+wsC+'33">W '+ws.toFixed(2)+'</span>'
+
         +(mr&&mr[MC.dept]?'<span class="tg tgD">'+mr[MC.dept]+'</span>':'<span class="tg tgD">Delivery</span>')
         +(mr&&mr[MC.team]?'<span class="tg tgP">'+mr[MC.team]+'</span>':'')
       +'</div></div></div>'
-    // W.Score bar
-    +'<div class="fm" style="margin-bottom:16px">'
-      +'<div class="fmT">Weighted Score <span style="float:right;color:'+wsC+';font-weight:700;font-size:17px">'+ws.toFixed(2)+'/5</span></div>'
-      +'<div class="fmB"><div class="fmF" style="width:'+(ws/5*100).toFixed(0)+'%;background:'+wsC+'"></div></div>'
-      +'<div class="fmL"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>'
-      +'<div style="font-size:9px;color:var(--mu);margin-top:4px;font-family:DM Mono,monospace">Rating\u00d70.4 + Mins\u00d70.3 + LeavePerf\u00d70.2 + OT\u00d70.1</div>'
-    +'</div>'
     // metrics
     +'<div class="emg">'
       +'<div class="emc"><div class="emlbl">Annual CTC</div><div class="emv ca4">'+fmt(r[C.ctc])+'</div></div>'
       +'<div class="emc"><div class="emlbl">Monthly CTC</div><div class="emv ca4" style="font-size:13px">'+fmt(r[C.ctcM])+'</div></div>'
-      +'<div class="emc"><div class="emlbl">Final Rating</div><div class="emv ca3">'+rt+'<span style="font-size:10px;color:var(--mu)">/5</span></div></div>'
+      +'<div class="emc"><div class="emlbl">Final Rating</div><div class="emv ca3">'+(rt>0?rt.toFixed(2):rt)+'<span style="font-size:10px;color:var(--mu)">/5</span></div></div>'
       +'<div class="emc"><div class="emlbl">Avg Mins</div><div class="emv ca">'+( r[C.avgMins]||'—')+'</div></div>'
       +'<div class="emc"><div class="emlbl">Leaves</div><div class="emv '+(N(r[C.leaves])>=20?'crd':'ca3')+'">'+( r[C.leaves]||'0')+'</div></div>'
       +'<div class="emc"><div class="emlbl">Leave Rating</div><div class="emv '+(N(r[C.leaveRating])>=3?'crd':'ca3')+'">'+( r[C.leaveRating]||'—')+'</div></div>'
@@ -932,7 +921,6 @@ function ddTable(rows,cols,sortable){
   var colDefs=cols.map(function(c){
     return {l:c,sortKey:function(r){
       if(c==='Rating')   return finalRating(r);
-      if(c==='W.Score')  return weightedScore(r);
       if(c==='Leaves')   return N(r[C.leaves]);
       if(c==='Avg Mins') return N(r[C.avgMins]);
       if(c==='CTC')      return N(r[C.ctc]);
@@ -947,8 +935,8 @@ function ddTable(rows,cols,sortable){
       if(c==='Emp ID')  return '<td class="mu2">'+(r[C.empId]||'—')+'</td>';
       if(c==='Email')   return '<td style="font-size:11px;color:var(--ac)">'+(r[C.email]||'—')+'</td>';
       if(c==='CTC')     return '<td class="ctcv">'+fmt(r[C.ctc])+'</td>';
-      if(c==='Rating')  {var v=ratingDisp(r);return '<td><div class="rb rb'+(v||0)+'">'+(v||'—')+'</div></td>';}
-      if(c==='W.Score') {var s=weightedScore(r);var col=s>=4?'#00e5a0':s>=3?'#f7c948':s>=2?'#ff6b35':'#ff4757';return '<td><b style="color:'+col+';font-family:DM Mono,monospace;font-size:12px">'+(s>0?s.toFixed(2):'—')+'</b></td>';}
+      if(c==='Rating')  {var v=ratingDisp(r);var vi=Math.round(v);return '<td><div class="rb rb'+(vi||0)+'">'+(v>0?v.toFixed(2):'—')+'</div></td>';}
+
       if(c==='Avg Mins')return '<td class="mu2">'+(r[C.avgMins]||'—')+'</td>';
       if(c==='Leaves')  {var v=N(r[C.leaves]);return '<td class="'+(v>=20?'lvhi':'mu2')+'">'+(r[C.leaves]||'0')+(v>=20?' \u26a0':'')+'</td>';}
       if(c==='Lv.Rtg') return '<td class="mu2">'+(r[C.leaveRating]||'—')+'</td>';
@@ -1019,25 +1007,24 @@ function buildDD(){
 
   // ── By Rating ──────────────────────────────────
   var rg={5:[],4:[],3:[],2:[],1:[],0:[]};
-  d.forEach(function(r){var v=ratingDisp(r);rg[v>=1&&v<=5?v:0].push(r);});
+  d.forEach(function(r){var v=Math.round(ratingDisp(r));rg[v>=1&&v<=5?v:0].push(r);});
   document.getElementById('dd-r').innerHTML=[5,4,3,2,1].filter(function(s){return rg[s].length;}).map(function(s){
     var g=rg[s];
-    var avW=(g.reduce(function(a,r){return a+weightedScore(r);},0)/g.length).toFixed(2);
     var avM=Math.round(g.filter(function(r){return N(r[C.avgMins])>0;}).reduce(function(a,r,_,arr){return a+N(r[C.avgMins])/arr.length;},0));
     return '<div class="dds"><div class="ddst" style="color:'+rcol[s]+'">\u2605 Rating '+s
-      +' <span class="ddsub">'+g.length+' employees \u00b7 avg W.Score '+avW+(avM?' \u00b7 avg mins '+avM:'')+'</span></div>'
-      +ddTable(g,['Photo','Name','Emp ID','CTC','W.Score','Rating','Avg Mins','Leaves','OT'])+'</div>';
+      +' <span class="ddsub">'+g.length+' employees '+(avM?' \u00b7 avg mins '+avM:'')+'</span></div>'
+      +ddTable(g,['Photo','Name','Emp ID','CTC','Rating','Avg Mins','Leaves','OT'])+'</div>';
   }).join('');
 
-  // ── By W.Score ─────────────────────────────────
-  var wg={'4-5':[],  '3-4':[], '2-3':[], '0-2':[]};
-  var wGcol={'4-5':'#00e5a0','3-4':'#00d4ff','2-3':'#f7c948','0-2':'#ff4757'};
-  d.forEach(function(r){var s=weightedScore(r);if(s>=4)wg['4-5'].push(r);else if(s>=3)wg['3-4'].push(r);else if(s>=2)wg['2-3'].push(r);else wg['0-2'].push(r);});
+  // ── By Factor ─────────────────────────────────
+  var wg={'4.5-5':[],  '3.5-4.49':[], '2.5-3.49':[], '<2.5':[]};
+  var wGcol={'4.5-5':'#00e5a0','3.5-4.49':'#00d4ff','2.5-3.49':'#f7c948','<2.5':'#ff4757'};
+  d.forEach(function(r){var s=finalRating(r);if(s>=4.5)wg['4.5-5'].push(r);else if(s>=3.5)wg['3.5-4.49'].push(r);else if(s>=2.5)wg['2.5-3.49'].push(r);else wg['<2.5'].push(r);});
   document.getElementById('dd-f').innerHTML=Object.keys(wg).filter(function(k){return wg[k].length;}).map(function(k){
-    var g=wg[k].sort(function(a,b){return weightedScore(b)-weightedScore(a);});
-    return '<div class="dds"><div class="ddst" style="color:'+wGcol[k]+'">\u2605 W.Score '+k
+    var g=wg[k].sort(function(a,b){return finalRating(b)-finalRating(a);});
+    return '<div class="dds"><div class="ddst" style="color:'+wGcol[k]+'">\u2605 Rating '+k
       +' <span class="ddsub">'+g.length+' employees</span></div>'
-      +ddTable(g,['Photo','Name','Emp ID','W.Score','Rating','Avg Mins','Leaves','CTC'])+'</div>';
+      +ddTable(g,['Photo','Name','Emp ID','Rating','Avg Mins','Leaves','CTC'])+'</div>';
   }).join('');
 
   // ── By Avg Mins ────────────────────────────────
@@ -1046,17 +1033,16 @@ function buildDD(){
     var g=d.filter(x[1]).sort(function(a,b){return N(b[C.avgMins])-N(a[C.avgMins]);});
     return '<div class="dds"><div class="ddst" style="color:'+x[2]+'">\u23f0 Mins '+x[0]
       +' <span class="ddsub">'+g.length+' employees</span></div>'
-      +ddTable(g,['Photo','Name','Emp ID','Avg Mins','W.Score','Rating','Leaves','CTC'])+'</div>';
+      +ddTable(g,['Photo','Name','Emp ID','Avg Mins','Rating','Leaves','CTC'])+'</div>';
   }).join('');
 
   // ── By Leaves ──────────────────────────────────
   var lb=[['0-5',function(r){return N(r[C.leaves])<=5;},'#00e5a0'],['6-10',function(r){var v=N(r[C.leaves]);return v>5&&v<=10;},'#00d4ff'],['11-15',function(r){var v=N(r[C.leaves]);return v>10&&v<=15;},'#f7c948'],['16-20',function(r){var v=N(r[C.leaves]);return v>15&&v<=20;},'#ff6b35'],['20+',function(r){return N(r[C.leaves])>20;},'#ff4757']];
   document.getElementById('dd-l').innerHTML=lb.filter(function(x){return d.filter(x[1]).length;}).map(function(x){
     var g=d.filter(x[1]).sort(function(a,b){return N(b[C.leaves])-N(a[C.leaves]);});
-    var avW=(g.reduce(function(a,r){return a+weightedScore(r);},0)/g.length).toFixed(2);
     return '<div class="dds"><div class="ddst" style="color:'+x[2]+'">\ud83c\udf3f Leaves '+x[0]
-      +' <span class="ddsub">'+g.length+' employees \u00b7 avg W.Score '+avW+'</span></div>'
-      +ddTable(g,['Name','Emp ID','Leaves','Lv.Rtg','W.Score','Rating','Avg Mins','CTC'])+'</div>';
+      +' <span class="ddsub">'+g.length+' employees</span></div>'
+      +ddTable(g,['Name','Emp ID','Leaves','Lv.Rtg','Rating','Avg Mins','CTC'])+'</div>';
   }).join('');
 
   // ── Master Sheet ───────────────────────────────
