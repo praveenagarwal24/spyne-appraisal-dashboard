@@ -360,91 +360,102 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 </div>
 
 <script>
-// ════════════════════════════════════════════════════════════
-// CONFIG  — update URLs when sheets change
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════
 var CFG = {
-  // Final_Appraisal published CSV (gid=537777663)
   appraisal: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTptLnEPb1xL3D9O5aF2zQeBd2moUhTlmOu_KzvELMpiLN3n0TFOKEEbqRTmXIBRe0DhInjJD1xRxnU/pub?output=csv&gid=537777663',
-  // Master_Sheet — paste published CSV URL here once you publish it
-  master: ''
+  master: ''   // paste Master_Sheet published CSV URL here
 };
 
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 // STATE
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 var AD=[], MD=[], AH=[], MH=[];
-// Column map for Final_Appraisal — exact header names from sheet
-var C = {
-  email:      'Email_ID',
-  empId:      'Emp_ID',
-  photo:      'Photo link',
-  name:       'Name',
-  ctc:        'Current CTC',
-  ctcM:       'Current CTC(M)',
-  doj:        'DOJ',
-  variable:   'Variable',
-  prorata:    'Prorata',
-  avgMins:    'Avg Mins',
-  rating:     'AVG Rating',
-  leaves:     'Leaves',
-  leaveRating:'Leave Rating',
-  ot:         'OT',
-  // These will be auto-detected from actual headers if names differ slightly
-  factor:     '',   // will be detected: Factor or Prorata
-  elig:       '',   // will be detected: Eligibility or criteria-based
-  newCtc:     '',   // will be detected: New CTC / Revised CTC
-  hike:       ''    // will be detected: Hike % / Increment
-};
-// Master_Sheet column map — will be auto-detected
+// C = column key→actual header name, resolved after load
+var C = { email:'Email_ID', empId:'Emp_ID', photo:'Photo link', name:'Name',
+          ctc:'Current CTC', ctcM:'Current CTC(M)', doj:'DOJ',
+          variable:'Variable', prorata:'Prorata',
+          avgMins:'Avg Mins', rating:'AVG Rating',
+          leaves:'Leaves', leaveRating:'Leave Rating', ot:'OT',
+          finalRating:'', newCtcM:'', hike:'' };
 var MC = {};
+// table state — ov=overview, tb=all-employees
+var ovF=[], ovPg=1, ovPS=15, ovSC=-1, ovSD=1;
 var tbF=[], tbPg=1, tbPS=20, tbSC=-1, tbSD=1;
-var ovF=[], ovPg=1, ovPS=15;
 var empF=[], empIdx=0;
 
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 // HELPERS
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 function N(v){ return parseFloat((v||'').toString().replace(/,/g,''))||0; }
-function fmt(v){ var n=N(v); return n?'₹'+n.toLocaleString('en-IN'):'—'; }
+function fmt(v){ var n=N(v); return n?'\u20b9'+n.toLocaleString('en-IN'):'—'; }
 function pct(a,b){ return b?((a/b)*100).toFixed(1)+'%':'—'; }
-function elig(r){ if(!C.elig) return false; var v=(r[C.elig]||'').trim().toUpperCase(); return v==='Y'||v==='YES'||v==='TRUE'||v==='1'; }
-function rating(r){ return Math.round(N(r[C.rating])); }
-function weightedScore(r){
-  // Weighted appraisal score (0-5)
-  // AVG Rating: 40%, Avg Mins (norm 400-500 → 1-5): 30%, Leave perf (inv Leave Rating): 20%, OT bonus: 10%
-  var rt = N(r[C.rating]);                             // 0-5
-  var mins = N(r[C.avgMins]);
-  var minsScore = mins>0 ? Math.min(5, Math.max(1, (mins-380)/24)) : 0; // 400=~1, 500=~5
-  var lv = N(r[C.leaveRating])||1;
-  var lvScore = Math.min(5, 5/lv);                     // 1→5, 2→2.5, 3→1.67 etc
-  var ot = N(r[C.ot]);
-  var otScore = Math.min(5, ot>0?3:1);                 // bonus if OT
-  var score = rt*0.4 + minsScore*0.3 + lvScore*0.2 + otScore*0.1;
-  return Math.min(5, Math.max(0, score));
+
+// Final Rating = column R (18th col, 0-indexed col 17)
+// Also auto-detected by name after load
+function finalRating(r){
+  if(C.finalRating && r[C.finalRating]!==undefined) return N(r[C.finalRating]);
+  // fallback: col index 17 (R)
+  var v = AH[17] ? r[AH[17]] : null;
+  return v!==null ? N(v) : N(r[C.rating]);
 }
-function weightedScoreFmt(r){
-  var s=weightedScore(r);
-  return s>0?s.toFixed(2):'—';
+function ratingDisp(r){ return Math.round(finalRating(r)); }
+
+// Weighted score using final rating
+function weightedScore(r){
+  var rt = finalRating(r);                          // 0-5
+  var mins = N(r[C.avgMins]);
+  var mScore = mins>0 ? Math.min(5,Math.max(0,(mins-380)/24)) : 0;
+  var lv = N(r[C.leaveRating])||1;
+  var lScore = Math.min(5, 5/lv);
+  var ot = N(r[C.ot]);
+  var oScore = ot>0 ? 3 : 1;
+  return Math.min(5, rt*0.4 + mScore*0.3 + lScore*0.2 + oScore*0.1);
 }
 
-function pImg(u,n){
-  var i=(n||'?').charAt(0).toUpperCase();
-  if(u&&u.startsWith('http')) return '<img style="width:28px;height:28px;border-radius:7px;object-fit:cover;border:1px solid var(--b1)" src="'+u+'" onerror="this.outerHTML=\'<div class=inav>'+i+'</div>\'" alt="">';
+// New Annual CTC = round(newCtcM) * 12
+function newAnnualCTC(r){
+  var m = C.newCtcM ? N(r[C.newCtcM]) : 0;
+  if(!m){ // fallback: try to detect new ctc monthly col
+    AH.forEach(function(h){
+      var l=h.toLowerCase().replace(/[\s_]+/g,'');
+      if(/newctc|revisedctc|finalctc/.test(l)&&/m$|monthly|month/.test(l)) m=N(r[h]);
+    });
+  }
+  if(!m) return null;
+  return Math.round(m)*12;
+}
+
+// Photo URL — convert Google Drive share link to thumbnail
+function driveThumb(url){
+  if(!url) return '';
+  // https://drive.google.com/file/d/FILE_ID/view  OR  https://drive.google.com/open?id=FILE_ID
+  var m = url.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if(!m) m = url.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+  if(m) return 'https://lh3.googleusercontent.com/d/'+m[1]+'=s200';
+  return url; // return as-is if not drive
+}
+
+function pImg(url,name){
+  var i=(name||'?').charAt(0).toUpperCase();
+  var src=driveThumb(url);
+  if(src) return '<img style="width:28px;height:28px;border-radius:7px;object-fit:cover;border:1px solid var(--b1);background:var(--s2)" src="'+src+'" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'inline-flex\'" alt=""><div class="inav" style="display:none">'+i+'</div>';
   return '<div class="inav">'+i+'</div>';
 }
-function pImgLg(u,n){
-  var i=(n||'?').charAt(0).toUpperCase();
-  if(u&&u.startsWith('http')) return '<img class="eph" src="'+u+'" onerror="this.outerHTML=\'<div class=eini>'+i+'</div>\'" alt="">';
+function pImgLg(url,name){
+  var i=(name||'?').charAt(0).toUpperCase();
+  var src=driveThumb(url);
+  if(src) return '<img class="eph" src="'+src+'" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'" alt=""><div class="eini" style="display:none">'+i+'</div>';
   return '<div class="eini">'+i+'</div>';
 }
 
 function setP(p,m){ document.getElementById('spFill').style.width=p+'%'; if(m) document.getElementById('spMsg').textContent=m; }
 function showErr(m){ document.getElementById('spErrMsg').textContent=m; document.getElementById('spErr').style.display='block'; setP(0,''); }
 
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 // CSV PARSER
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 function parseCSV(txt){
   var lines=[],inQ=false,cur='',cells=[];
   for(var i=0;i<txt.length;i++){
@@ -462,546 +473,632 @@ function parseCSV(txt){
   if(cells.some(function(v){return v;})) lines.push(cells);
   return lines;
 }
-
-function csvToObjects(rows){
-  var hdrs=rows[0].map(function(h){return h.trim();});
-  return { headers: hdrs, data: rows.slice(1).filter(function(r){return r.some(function(v){return v;});}).map(function(r){var o={};hdrs.forEach(function(h,i){o[h]=(r[i]||'').trim();});return o;}) };
+function toObjects(rows){
+  var h=rows[0].map(function(x){return x.trim();});
+  return {headers:h, data:rows.slice(1).filter(function(r){return r.some(function(v){return v;});}).map(function(r){var o={};h.forEach(function(k,i){o[k]=(r[i]||'').trim();});return o;})};
 }
 
-// ════════════════════════════════════════════════════════════
-// AUTO-MAP Master_Sheet columns
-// ════════════════════════════════════════════════════════════
-function autoMap(hdrs, T){
-  Object.keys(T).forEach(function(k){ T[k]=''; });
-  hdrs.forEach(function(h){
-    var l=h.toLowerCase().replace(/[\s_\-]+/g,'');
-    if(!T.empId   && /empid/.test(l))                      T.empId=h;
-    if(!T.name    && (l==='name'||/employee.*name/.test(l))) T.name=h;
-    if(!T.email   && /email/.test(l))                      T.email=h;
-    if(!T.dept    && /dept|department/.test(l))            T.dept=h;
-    if(!T.desig   && /desig|title|position|role/.test(l))  T.desig=h;
-    if(!T.manager && /manager|reporting/.test(l))          T.manager=h;
-    if(!T.loc     && /location|city|office/.test(l))       T.loc=h;
-    if(!T.doj     && /doj|joining|joindate/.test(l))       T.doj=h;
-    if(!T.band    && /band|grade|level/.test(l))           T.band=h;
-    if(!T.team    && /team/.test(l))                       T.team=h;
+// ═══════════════════════════════════════════════════
+// COLUMN DETECTION
+// ═══════════════════════════════════════════════════
+function detectCols(){
+  console.log('Headers:', AH);
+  // Column R = index 17 (0-based)
+  if(AH[17]) C.finalRating = AH[17];
+  console.log('Column R (index 17) =', AH[17]);
+
+  // Auto-detect remaining cols by name pattern
+  AH.forEach(function(h){
+    var l=h.toLowerCase().replace(/[\s_]+/g,'');
+    if(!C.email      && /email/.test(l))                        C.email=h;
+    if(!C.empId      && /empid/.test(l))                        C.empId=h;
+    if(!C.photo      && /photo/.test(l))                        C.photo=h;
+    if(l==='name'    && !C.name)                                C.name=h;
+    if(!C.ctc        && /currentctc$/.test(l))                  C.ctc=h;
+    if(!C.ctcM       && /currentctc.*m$|ctcmonth/.test(l))      C.ctcM=h;
+    if(!C.doj        && /^doj$/.test(l))                        C.doj=h;
+    if(!C.variable   && /^variable$/.test(l))                   C.variable=h;
+    if(!C.prorata    && /^prorata$/.test(l))                     C.prorata=h;
+    if(!C.avgMins    && /avgmin/.test(l))                       C.avgMins=h;
+    if(!C.rating     && /avgrating/.test(l))                    C.rating=h;
+    if(!C.leaves     && /^leaves?$/.test(l))                    C.leaves=h;
+    if(!C.leaveRating&& /leaverat/.test(l))                     C.leaveRating=h;
+    if(!C.ot         && /^ot$/.test(l))                         C.ot=h;
+    // New CTC monthly (col after finalRating likely)
+    if(!C.newCtcM    && /newctc|revisedctc|finalctc/.test(l))   C.newCtcM=h;
+    if(!C.hike       && /hike|increment/.test(l))               C.hike=h;
+  });
+  console.log('Column map:', C);
+}
+function detectMasterCols(){
+  MC={empId:'',name:'',dept:'',desig:'',manager:'',loc:'',doj:'',band:'',team:''};
+  MH.forEach(function(h){
+    var l=h.toLowerCase().replace(/[\s_]+/g,'');
+    if(!MC.empId  && /empid/.test(l))           MC.empId=h;
+    if(!MC.name   && /^name$/.test(l))           MC.name=h;
+    if(!MC.dept   && /dept/.test(l))             MC.dept=h;
+    if(!MC.desig  && /desig|title|position/.test(l)) MC.desig=h;
+    if(!MC.manager&& /manager|reporting/.test(l)) MC.manager=h;
+    if(!MC.loc    && /location|city/.test(l))    MC.loc=h;
+    if(!MC.doj    && /doj|joining/.test(l))      MC.doj=h;
+    if(!MC.band   && /band|grade/.test(l))       MC.band=h;
+    if(!MC.team   && /team/.test(l))             MC.team=h;
   });
 }
-
-// ════════════════════════════════════════════════════════════
-// FETCH
-// ════════════════════════════════════════════════════════════
-function fetchCSV(url){
-  return fetch(url).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); });
+function getMaster(empId){
+  if(!MD.length||!MC.empId) return null;
+  return MD.find(function(m){return (m[MC.empId]||'').trim()===(empId||'').trim();})||null;
 }
 
+// ═══════════════════════════════════════════════════
+// DATA LOAD
+// ═══════════════════════════════════════════════════
 function init(){
   document.getElementById('spErr').style.display='none';
-  setP(10,'Fetching Final_Appraisal…');
-  fetchCSV(CFG.appraisal)
+  setP(15,'Fetching Final_Appraisal…');
+  fetch(CFG.appraisal)
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
     .then(function(txt){
-      setP(45,'Parsing Final_Appraisal…');
-      var parsed=csvToObjects(parseCSV(txt));
-      AH=parsed.headers; AD=parsed.data;
-      // validate key columns exist, fallback-detect if headers differ
-      validateCols();
-      setP(60, CFG.master ? 'Fetching Master_Sheet…' : 'Building dashboard…');
+      setP(50,'Parsing data…');
+      var p=toObjects(parseCSV(txt));
+      AH=p.headers; AD=p.data;
+      detectCols();
+      setP(65, CFG.master?'Fetching Master_Sheet…':'Building…');
       if(CFG.master){
-        return fetchCSV(CFG.master).then(function(txt2){
-          setP(78,'Parsing Master_Sheet…');
-          var p2=csvToObjects(parseCSV(txt2));
-          MH=p2.headers; MD=p2.data;
-          MC={empId:'',name:'',email:'',dept:'',desig:'',manager:'',loc:'',doj:'',band:'',team:''};
-          autoMap(MH, MC);
-          document.getElementById('sb-ms').textContent=MD.length;
-        }).catch(function(){ console.warn('Master_Sheet load failed'); });
+        return fetch(CFG.master)
+          .then(function(r){ return r.ok?r.text():Promise.reject('master fail'); })
+          .then(function(txt2){
+            var p2=toObjects(parseCSV(txt2)); MH=p2.headers; MD=p2.data;
+            detectMasterCols();
+            document.getElementById('sb-ms').textContent=MD.length;
+          }).catch(function(e){ console.warn('Master_Sheet:',e); });
       }
     })
     .then(function(){
-      setP(90,'Building dashboard…');
+      setP(88,'Building dashboard…');
       setTimeout(function(){
         buildAll();
         var now=new Date();
         document.getElementById('lastUpd').textContent=now.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})+' '+now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
         document.getElementById('sb-lv').textContent='Live · Google Sheets';
-        document.getElementById('sb-rc').textContent=AD.length+' in Final_Appraisal'+(MD.length?' · '+MD.length+' in Master':'');
-        // Show detected column map in console for debugging
-        console.log('=== COLUMN MAP ===', C);
-        console.log('=== SAMPLE ROW ===', AD[0]);
-        console.log('=== ALL HEADERS ===', AH);
+        document.getElementById('sb-rc').textContent=AD.length+' employees'+(MD.length?' · '+MD.length+' master':'');
         document.getElementById('sb-tot').textContent=AD.length;
         document.getElementById('sb-hl').textContent=AD.filter(function(r){return N(r[C.leaves])>=20;}).length;
-        setP(100,'Ready');
+        setP(100,'');
         setTimeout(function(){ document.getElementById('splash').classList.add('out'); document.getElementById('app').style.display='block'; },400);
       },120);
     })
-    .catch(function(e){ showErr('Could not load data: '+e.message); });
+    .catch(function(e){ showErr(e.message||String(e)); });
 }
-
-// Auto-detect ALL columns from actual headers in Final_Appraisal
-function validateCols(){
-  if(!AH.length) return;
-  // Log actual headers to console for debugging
-  console.log('Final_Appraisal headers:', AH);
-  
-  function find(regex){ return AH.find(function(h){return regex.test(h.trim());})||''; }
-  
-  // Core identification cols
-  if(!AH.includes(C.email))      C.email      = find(/email/i);
-  if(!AH.includes(C.empId))      C.empId      = find(/emp.?id/i);
-  if(!AH.includes(C.photo))      C.photo      = find(/photo/i);
-  if(!AH.includes(C.name))       C.name       = find(/^name$/i);
-  
-  // CTC cols
-  if(!AH.includes(C.ctc))        C.ctc        = find(/current.?ctc/i) || find(/^ctc$/i);
-  if(!AH.includes(C.ctcM))       C.ctcM       = find(/current.?ctc.*m|ctc.*month/i);
-  
-  // Date cols
-  if(!AH.includes(C.doj))        C.doj        = find(/^doj$/i) || find(/joining.*date|date.*joining/i);
-  
-  // Performance cols — try multiple possible names
-  if(!AH.includes(C.avgMins))    C.avgMins    = find(/avg.*min/i) || find(/min.*avg/i);
-  if(!AH.includes(C.rating))     C.rating     = find(/avg.*rat/i) || find(/rat.*avg/i);
-  if(!AH.includes(C.leaves))     C.leaves     = find(/^leaves?$/i);
-  if(!AH.includes(C.leaveRating))C.leaveRating= find(/leave.*rat/i);
-  if(!AH.includes(C.ot))         C.ot         = find(/^ot$/i);
-  
-  // Factor — could be "Factor", "Prorata", "Increment Factor"
-  if(!AH.includes(C.factor)||!C.factor) 
-    C.factor = find(/^factor$/i) || find(/prorata/i) || find(/increment.*factor/i);
-  
-  // Variable pay
-  if(!AH.includes(C.variable)||!C.variable)
-    C.variable = find(/^variable$/i) || find(/variable.*pay/i);
-  
-  // Eligibility — could be "Eligibility", "Eligible", criteria column
-  if(!AH.includes(C.elig)||!C.elig)
-    C.elig = find(/eligib/i) || find(/^eligible$/i);
-  
-  // New/revised CTC after hike
-  if(!C.newCtc) C.newCtc = find(/new.?ctc/i) || find(/revised.?ctc/i) || find(/final.?ctc/i);
-  if(!C.hike)   C.hike   = find(/hike/i) || find(/increment.*%|%.*increment/i);
-  
-  // Anything else useful
-  if(!C.endDate) C.endDate = find(/end.?date/i) || find(/last.?day/i);
-  
-  console.log('Mapped columns:', JSON.stringify(C));
-}
-
 function refreshData(){ document.getElementById('splash').classList.remove('out'); document.getElementById('app').style.display='none'; AD=[]; MD=[]; setTimeout(init,300); }
 
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 // BUILD ALL
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 function buildAll(){
   buildKPIs();
-  buildBar('ch-ov-r',rR()); buildBar('ch-ov-f',fR()); buildDonut('ch-ov-d','ch-ov-dl',eS());
-  buildBar('ch-an-r',rR()); buildBar('ch-an-f',fR()); buildDonut('ch-an-d','ch-an-dl',eS());
-  buildBar('ch-an-l',lR()); buildBar('ch-an-m',mR()); buildBar('ch-an-c',cR());
+  buildBar('ch-ov-r',ratingRows()); buildBar('ch-ov-f',factorRows()); buildDonut('ch-ov-d','ch-ov-dl',ratingDonut());
+  buildBar('ch-an-r',ratingRows()); buildBar('ch-an-f',factorRows()); buildDonut('ch-an-d','ch-an-dl',ratingDonut());
+  buildBar('ch-an-l',leavesRows()); buildBar('ch-an-m',minsRows()); buildBar('ch-an-c',ctcRows());
   buildHeads(); buildNameFilter();
   tbF=AD.slice(); ovF=AD.slice();
   renderTb(); renderOv(); buildEL(); buildDD();
 }
 
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 // KPIs
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 function buildKPIs(){
   var d=AD, t=d.length;
-  var el=0; // not shown - all eligible
-  var rs=d.map(function(r){return N(r[C.rating]);}).filter(function(v){return v>0;});
+  var rs=d.map(function(r){return finalRating(r);}).filter(function(v){return v>0;});
   var avR=rs.length?(rs.reduce(function(a,b){return a+b;},0)/rs.length).toFixed(1):'—';
-  var fs=d.map(function(r){return N(r[C.factor]);}).filter(function(v){return v>0;});
-  var avF=fs.length?(fs.reduce(function(a,b){return a+b;},0)/fs.length).toFixed(2):'—';
+  var ws=d.map(function(r){return weightedScore(r);}).filter(function(v){return v>0;});
+  var avW=ws.length?(ws.reduce(function(a,b){return a+b;},0)/ws.length).toFixed(2):'—';
   var hl=d.filter(function(r){return N(r[C.leaves])>=20;}).length;
   var ms=d.map(function(r){return N(r[C.avgMins]);}).filter(function(v){return v>0;});
   var avM=ms.length?Math.round(ms.reduce(function(a,b){return a+b;},0)/ms.length):'—';
+  var ctcArr=d.map(function(r){return N(r[C.ctc]);}).filter(function(v){return v>0;});
+  var avCTC=ctcArr.length?fmt(Math.round(ctcArr.reduce(function(a,b){return a+b;},0)/ctcArr.length)):'—';
   document.getElementById('kgrid').innerHTML=[
     {c:'k1',l:'Total Employees',v:t,s:'Final_Appraisal'},
-    {c:'k2',l:'Avg W.Score',v:(function(){var ws=d.map(function(r){return weightedScore(r);}).filter(function(v){return v>0;});return ws.length?(ws.reduce(function(a,b){return a+b;},0)/ws.length).toFixed(2):'—';})(),s:'Weighted score'},
-    {c:'k3',l:'Avg Rating',v:avR,s:'AVG Rating column'},
-    {c:'k4',l:'Avg Factor',v:avF,s:'Factor column'},
-    {c:'k5',l:'High Leaves',v:hl,s:'≥ 20 days'},
-    {c:'k6',l:'Avg Mins',v:avM,s:'Avg Mins column'}
+    {c:'k2',l:'Avg W.Score',v:avW,s:'Weighted appraisal'},
+    {c:'k3',l:'Avg Final Rating',v:avR,s:'Column R rating'},
+    {c:'k4',l:'Avg Mins',v:avM,s:'Productive minutes'},
+    {c:'k5',l:'High Leaves',v:hl,s:'\u2265 20 days'},
+    {c:'k6',l:'Avg CTC',v:avCTC,s:'Annual CTC avg'}
   ].map(function(k,i){return '<div class="kpi '+k.c+'" style="animation-delay:'+(i*.07)+'s"><div class="kl">'+k.l+'</div><div class="kv">'+k.v+'</div><div class="ks">'+k.s+'</div></div>';}).join('');
 }
 
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 // CHART DATA
-// ════════════════════════════════════════════════════════════
-function rR(){ var rc={1:0,2:0,3:0,4:0,5:0},col={5:'#00e5a0',4:'#00d4ff',3:'#f7c948',2:'#ff6b35',1:'#ff4757'}; AD.forEach(function(r){var v=rating(r);if(v>=1&&v<=5)rc[v]++;}); return [5,4,3,2,1].map(function(i){return{l:'★ '+i,v:rc[i],c:col[i]};}); }
-function fR(){ var fb={'<0.8':0,'0.8-1.0':0,'1.0-1.2':0,'1.2-1.4':0,'1.4+':0}; var fKey=C.factor||C.prorata; AD.forEach(function(r){var v=N(r[fKey]);if(v===0)return;if(v<0.8)fb['<0.8']++;else if(v<1.0)fb['0.8-1.0']++;else if(v<1.2)fb['1.0-1.2']++;else if(v<1.4)fb['1.2-1.4']++;else fb['1.4+']++;}); return Object.keys(fb).map(function(l){return{l:l,v:fb[l],c:'#00d4ff'};}); }
-function eS(){
-  // Since all are eligible, show rating split instead
-  var rc={5:0,4:0,3:0,2:0,1:0,0:0};
-  AD.forEach(function(r){var v=rating(r);var k=(v>=1&&v<=5)?v:0;rc[k]++;});
-  return [
-    {l:'Rating 5',v:rc[5],h:'#00e5a0'},
-    {l:'Rating 4',v:rc[4],h:'#00d4ff'},
-    {l:'Rating 3',v:rc[3],h:'#f7c948'},
-    {l:'Rating 2',v:rc[2],h:'#ff6b35'},
-    {l:'Rating 1',v:rc[1],h:'#ff4757'}
-  ].filter(function(s){return s.v>0;});
+// ═══════════════════════════════════════════════════
+function ratingRows(){
+  var rc={1:0,2:0,3:0,4:0,5:0};
+  var col={5:'#00e5a0',4:'#00d4ff',3:'#f7c948',2:'#ff6b35',1:'#ff4757'};
+  AD.forEach(function(r){var v=ratingDisp(r);if(v>=1&&v<=5)rc[v]++;});
+  return [5,4,3,2,1].map(function(i){return{l:'\u2605 '+i,v:rc[i],c:col[i]};});
 }
-function lR(){ var lb={'0-5':0,'6-10':0,'11-15':0,'16-20':0,'20+':0}; AD.forEach(function(r){var v=N(r[C.leaves]);if(v<=5)lb['0-5']++;else if(v<=10)lb['6-10']++;else if(v<=15)lb['11-15']++;else if(v<=20)lb['16-20']++;else lb['20+']++;}); return Object.keys(lb).map(function(l){return{l:l,v:lb[l],c:'#ff4757'};}); }
-function mR(){ var mb={'<400':0,'400-450':0,'450-480':0,'480-500':0,'500+':0}; AD.forEach(function(r){var v=N(r[C.avgMins]);if(v<400)mb['<400']++;else if(v<450)mb['400-450']++;else if(v<480)mb['450-480']++;else if(v<500)mb['480-500']++;else mb['500+']++;}); return Object.keys(mb).map(function(l){return{l:l,v:mb[l],c:'#c084fc'};}); }
-function cR(){ var cb={'<3L':0,'3-4L':0,'4-6L':0,'6L-1M':0,'1M+':0}; AD.forEach(function(r){var v=N(r[C.ctc]);if(v<300000)cb['<3L']++;else if(v<400000)cb['3-4L']++;else if(v<600000)cb['4-6L']++;else if(v<1000000)cb['6L-1M']++;else cb['1M+']++;}); return Object.keys(cb).map(function(l){return{l:l,v:cb[l],c:'#f7c948'};}); }
+function factorRows(){
+  var fb={'<0.8':0,'0.8-1.0':0,'1.0-1.2':0,'1.2+':0};
+  var key=C.prorata||C.factor||'';
+  AD.forEach(function(r){var v=N(r[key]);if(!v)return;if(v<0.8)fb['<0.8']++;else if(v<1.0)fb['0.8-1.0']++;else if(v<1.2)fb['1.0-1.2']++;else fb['1.2+']++;});
+  return Object.keys(fb).map(function(l){return{l:l,v:fb[l],c:'#00d4ff'};});
+}
+function ratingDonut(){
+  var rc={5:0,4:0,3:0,2:0,1:0};
+  var col={5:'#00e5a0',4:'#00d4ff',3:'#f7c948',2:'#ff6b35',1:'#ff4757'};
+  AD.forEach(function(r){var v=ratingDisp(r);if(v>=1&&v<=5)rc[v]++;});
+  return [5,4,3,2,1].filter(function(i){return rc[i]>0;}).map(function(i){return{l:'\u2605'+i,v:rc[i],h:col[i]};});
+}
+function leavesRows(){
+  var lb={'0-5':0,'6-10':0,'11-15':0,'16-20':0,'20+':0};
+  AD.forEach(function(r){var v=N(r[C.leaves]);if(v<=5)lb['0-5']++;else if(v<=10)lb['6-10']++;else if(v<=15)lb['11-15']++;else if(v<=20)lb['16-20']++;else lb['20+']++;});
+  return Object.keys(lb).map(function(l){return{l:l,v:lb[l],c:'#ff4757'};});
+}
+function minsRows(){
+  var mb={'<400':0,'400-450':0,'450-480':0,'480-500':0,'500+':0};
+  AD.forEach(function(r){var v=N(r[C.avgMins]);if(!v)return;if(v<400)mb['<400']++;else if(v<450)mb['400-450']++;else if(v<480)mb['450-480']++;else if(v<500)mb['480-500']++;else mb['500+']++;});
+  return Object.keys(mb).map(function(l){return{l:l,v:mb[l],c:'#c084fc'};});
+}
+function ctcRows(){
+  var cb={'<3L':0,'3-4L':0,'4-6L':0,'6L-10L':0,'10L+':0};
+  AD.forEach(function(r){var v=N(r[C.ctc]);if(!v)return;if(v<300000)cb['<3L']++;else if(v<400000)cb['3-4L']++;else if(v<600000)cb['4-6L']++;else if(v<1000000)cb['6L-10L']++;else cb['10L+']++;});
+  return Object.keys(cb).map(function(l){return{l:l,v:cb[l],c:'#f7c948'};});
+}
 
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 // CHART RENDERERS
-// ════════════════════════════════════════════════════════════
-function buildBar(id,rows){ var el=document.getElementById(id); if(!el) return; var mx=Math.max.apply(null,rows.map(function(r){return r.v;}))||1; el.innerHTML=rows.map(function(r){return '<div class="brow"><div class="blbl">'+r.l+'</div><div class="btr"><div class="bfl" style="width:'+(r.v/mx*100).toFixed(1)+'%;background:'+r.c+'"></div></div><div class="bvl">'+r.v+'</div></div>';}).join(''); }
-function buildDonut(sid,lid,segs){ var svg=document.getElementById(sid); if(!svg) return; var tot=segs.reduce(function(a,b){return a+b.v;},0); svg.innerHTML=''; if(!tot) return; var cx=50,cy=50,r=36,sw=12,ci=2*Math.PI*r; var bg=document.createElementNS('http://www.w3.org/2000/svg','circle'); bg.setAttribute('cx',cx);bg.setAttribute('cy',cy);bg.setAttribute('r',r);bg.setAttribute('fill','none');bg.setAttribute('stroke','#1e2535');bg.setAttribute('stroke-width',sw);svg.appendChild(bg); var off=-90; segs.forEach(function(s){ var p=s.v/tot,da=p*ci; var c=document.createElementNS('http://www.w3.org/2000/svg','circle'); c.setAttribute('cx',cx);c.setAttribute('cy',cy);c.setAttribute('r',r);c.setAttribute('fill','none');c.setAttribute('stroke',s.h);c.setAttribute('stroke-width',sw);c.setAttribute('stroke-dasharray',da+' '+(ci-da));c.setAttribute('stroke-dashoffset',-(off/360)*ci+ci/4);c.setAttribute('stroke-linecap','round');svg.appendChild(c);off+=p*360; }); var t=document.createElementNS('http://www.w3.org/2000/svg','text');t.setAttribute('x',cx);t.setAttribute('y',cy+5);t.setAttribute('text-anchor','middle');t.setAttribute('font-family','DM Sans,sans-serif');t.setAttribute('font-weight','700');t.setAttribute('font-size','13');t.setAttribute('fill','#e8edf8');t.textContent=tot;svg.appendChild(t); var leg=document.getElementById(lid); if(leg) leg.innerHTML=segs.map(function(s){return '<div class="di"><div class="dd" style="background:'+s.h+'"></div>'+s.l+': <b>'+s.v+'</b></div>';}).join(''); }
+// ═══════════════════════════════════════════════════
+function buildBar(id,rows){
+  var el=document.getElementById(id); if(!el) return;
+  var mx=Math.max.apply(null,rows.map(function(r){return r.v;}))||1;
+  el.innerHTML=rows.map(function(r){return '<div class="brow"><div class="blbl">'+r.l+'</div><div class="btr"><div class="bfl" style="width:'+(r.v/mx*100).toFixed(1)+'%;background:'+r.c+'"></div></div><div class="bvl">'+r.v+'</div></div>';}).join('');
+}
+function buildDonut(sid,lid,segs){
+  var svg=document.getElementById(sid); if(!svg) return;
+  var tot=segs.reduce(function(a,b){return a+b.v;},0); svg.innerHTML=''; if(!tot) return;
+  var cx=50,cy=50,r=36,sw=12,ci=2*Math.PI*r;
+  var bg=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  bg.setAttribute('cx',cx);bg.setAttribute('cy',cy);bg.setAttribute('r',r);bg.setAttribute('fill','none');bg.setAttribute('stroke','#1e2535');bg.setAttribute('stroke-width',sw);svg.appendChild(bg);
+  var off=-90;
+  segs.forEach(function(s){
+    var p=s.v/tot,da=p*ci;
+    var c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',cx);c.setAttribute('cy',cy);c.setAttribute('r',r);c.setAttribute('fill','none');
+    c.setAttribute('stroke',s.h);c.setAttribute('stroke-width',sw);c.setAttribute('stroke-dasharray',da+' '+(ci-da));
+    c.setAttribute('stroke-dashoffset',-(off/360)*ci+ci/4);c.setAttribute('stroke-linecap','round');svg.appendChild(c);off+=p*360;
+  });
+  var t=document.createElementNS('http://www.w3.org/2000/svg','text');
+  t.setAttribute('x',cx);t.setAttribute('y',cy+5);t.setAttribute('text-anchor','middle');t.setAttribute('font-family','DM Sans,sans-serif');t.setAttribute('font-weight','700');t.setAttribute('font-size','13');t.setAttribute('fill','#e8edf8');t.textContent=tot;svg.appendChild(t);
+  var leg=document.getElementById(lid);
+  if(leg) leg.innerHTML=segs.map(function(s){return '<div class="di"><div class="dd" style="background:'+s.h+'"></div>'+s.l+': <b>'+s.v+'</b></div>';}).join('');
+}
 
-// ════════════════════════════════════════════════════════════
-// TABLE COLUMNS — mapped to exact Final_Appraisal headers
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// TABLE COLUMNS
+// ═══════════════════════════════════════════════════
 var TC=[
-  {l:'Photo',     r:function(r){return '<td>'+pImg(r[C.photo],r[C.name])+'</td>';}},
-  {l:'Name',      k:function(){return C.name;},      r:function(r){return '<td style="font-weight:500;min-width:130px">'+(r[C.name]||'—')+'</td>';}},
-  {l:'Emp ID',    k:function(){return C.empId;},     r:function(r){return '<td class="mu2">'+(r[C.empId]||'—')+'</td>';}},
-  {l:'Email',     r:function(r){return '<td style="font-size:11px;color:var(--ac);font-family:DM Mono,monospace;min-width:160px">'+(r[C.email]||'—')+'</td>';}},
-  {l:'CTC',       k:function(){return C.ctc;},       r:function(r){return '<td class="ctcv">'+fmt(r[C.ctc])+'</td>';}},
-  {l:'CTC(M)',    k:function(){return C.ctcM;},      r:function(r){return '<td class="mu2">'+fmt(r[C.ctcM])+'</td>';}},
-  {l:'DOJ',       k:function(){return C.doj;},       r:function(r){return '<td class="mu2">'+(r[C.doj]||'—')+'</td>';}},
-  {l:'Variable',  k:function(){return C.variable;},  r:function(r){return '<td class="mu2">'+(r[C.variable]?fmt(r[C.variable]):'—')+'</td>';}},
-  {l:'Avg Mins',  k:function(){return C.avgMins;},   r:function(r){return '<td class="mu2">'+(r[C.avgMins]||'—')+'</td>';}},
-  {l:'Rating',    k:function(){return C.rating;},    r:function(r){var v=rating(r);return '<td><div class="rb rb'+(v||0)+'">'+(v||'—')+'</div></td>';}},
-  {l:'W.Score',   k:function(){return C.rating;},    r:function(r){var s=weightedScore(r);var p=Math.min(100,(s/5)*100);var c=s>=4?'#00e5a0':s>=3?'#f7c948':s>=2?'#ff6b35':'#ff4757';return '<td><div class="fbar"><span style="font-size:11px;min-width:32px;font-family:DM Mono,monospace;font-weight:700;color:'+c+'">'+(s>0?s.toFixed(1):'—')+'</span><div class="ftr"><div class="ffl" style="width:'+p+'%;background:'+c+'"></div></div></div></td>';}},
-  {l:'Leaves',    k:function(){return C.leaves;},    r:function(r){var v=N(r[C.leaves]);return '<td class="'+(v>=20?'lvhi':'mu2')+'">'+(r[C.leaves]||'0')+(v>=20?' ⚠':'')+'</td>';}},
-  {l:'Lv.Rtg',   k:function(){return C.leaveRating;},r:function(r){return '<td class="mu2">'+(r[C.leaveRating]||'—')+'</td>';}},
-  {l:'OT',        k:function(){return C.ot;},        r:function(r){return '<td class="mu2">'+(r[C.ot]||'—')+'</td>';}}
-]
-function buildHeads(){ var h=TC.map(function(c,i){return '<th onclick="tbSrt('+i+')" data-i="'+i+'">'+c.l+' <span>↕</span></th>';}).join(''); document.getElementById('tb-th').innerHTML=h; document.getElementById('ov-th').innerHTML=TC.map(function(c,i){return '<th onclick="ovSrt('+i+')">'+(c.l)+' <span>↕</span></th>';}).join(''); }
-function buildNameFilter(){ var ns={}; AD.forEach(function(r){var n=r[C.name];if(n)ns[n]=1;}); document.getElementById('tb-n').innerHTML='<option value="">All Names</option>'+Object.keys(ns).sort().map(function(n){return '<option value="'+n+'">'+n+'</option>';}).join(''); }
-function tRows(data){ return data.map(function(r){return '<tr>'+TC.map(function(c){return c.r(r);}).join('')+'</tr>';}).join(''); }
+  {l:'Photo',     sk:false, r:function(r){return '<td>'+pImg(r[C.photo],r[C.name])+'</td>';}},
+  {l:'Name',      sk:true,  k:function(){return C.name;},      r:function(r){return '<td style="font-weight:500;min-width:130px">'+(r[C.name]||'—')+'</td>';}},
+  {l:'Emp ID',    sk:true,  k:function(){return C.empId;},     r:function(r){return '<td class="mu2">'+(r[C.empId]||'—')+'</td>';}},
+  {l:'Email',     sk:false, r:function(r){return '<td style="font-size:11px;color:var(--ac);font-family:DM Mono,monospace;min-width:170px">'+(r[C.email]||'—')+'</td>';}},
+  {l:'CTC (Annual)',sk:true,k:function(){return C.ctc;},       r:function(r){return '<td class="ctcv">'+fmt(r[C.ctc])+'</td>';}},
+  {l:'CTC (M)',   sk:true,  k:function(){return C.ctcM;},      r:function(r){return '<td class="mu2">'+fmt(r[C.ctcM])+'</td>';}},
+  {l:'DOJ',       sk:true,  k:function(){return C.doj;},       r:function(r){return '<td class="mu2">'+(r[C.doj]||'—')+'</td>';}},
+  {l:'Avg Mins',  sk:true,  k:function(){return C.avgMins;},   r:function(r){return '<td class="mu2">'+(r[C.avgMins]||'—')+'</td>';}},
+  {l:'Rating',    sk:true,  k:function(){return C.finalRating||C.rating;}, r:function(r){var v=ratingDisp(r);return '<td><div class="rb rb'+(v||0)+'">'+(v||'—')+'</div></td>';}},
+  {l:'W.Score',   sk:true,  k:function(){return C.rating;},   r:function(r){var s=weightedScore(r);var p=(s/5*100).toFixed(0);var c=s>=4?'#00e5a0':s>=3?'#f7c948':s>=2?'#ff6b35':'#ff4757';return '<td><div class="fbar"><span style="font-size:11px;min-width:32px;font-family:DM Mono,monospace;font-weight:700;color:'+c+'">'+(s>0?s.toFixed(1):'—')+'</span><div class="ftr"><div class="ffl" style="width:'+p+'%;background:'+c+'"></div></div></div></td>';}},
+  {l:'Leaves',    sk:true,  k:function(){return C.leaves;},    r:function(r){var v=N(r[C.leaves]);return '<td class="'+(v>=20?'lvhi':'mu2')+'">'+(r[C.leaves]||'0')+(v>=20?' \u26a0':'')+'</td>';}},
+  {l:'Lv.Rtg',   sk:true,  k:function(){return C.leaveRating;},r:function(r){return '<td class="mu2">'+(r[C.leaveRating]||'—')+'</td>';}},
+  {l:'OT',        sk:true,  k:function(){return C.ot;},        r:function(r){return '<td class="mu2">'+(r[C.ot]||'—')+'</td>';}}
+];
+
+function buildHeads(){
+  var mkTh=function(id,sort){
+    return TC.map(function(c,i){
+      return '<th onclick="'+sort+'('+i+')" data-i="'+i+'" style="'+(c.sk?'':'cursor:default')+'">'+(c.l)+' '+(c.sk?'<span>\u2195</span>':'')+'</th>';
+    }).join('');
+  };
+  document.getElementById('tb-th').innerHTML=mkTh('tb-th','tbSrt');
+  document.getElementById('ov-th').innerHTML=mkTh('ov-th','ovSrt');
+}
+function buildNameFilter(){
+  var ns={};
+  AD.forEach(function(r){if(r[C.name])ns[r[C.name]]=1;});
+  document.getElementById('tb-n').innerHTML='<option value="">All Names</option>'+Object.keys(ns).sort().map(function(n){return '<option value="'+n+'">'+n+'</option>';}).join('');
+}
+function tRows(data){
+  return data.map(function(r){return '<tr>'+TC.map(function(c){return c.r(r);}).join('')+'</tr>';}).join('');
+}
 function emR(){ return '<tr><td colspan="'+TC.length+'" style="text-align:center;padding:38px;color:var(--mu)">No records found</td></tr>'; }
-function renderTb(){ var s=(tbPg-1)*tbPS,pg=tbF.slice(s,s+tbPS); document.getElementById('tb-tb').innerHTML=pg.length?tRows(pg):emR(); document.getElementById('tb-c').textContent=tbF.length+' records'; rPag('tb-pg',tbPg,Math.ceil(tbF.length/tbPS),function(p){tbPg=p;renderTb();}); }
-function renderOv(){ var s=(ovPg-1)*ovPS,pg=ovF.slice(s,s+ovPS); document.getElementById('ov-tb').innerHTML=pg.length?tRows(pg):emR(); document.getElementById('ov-c').textContent=ovF.length+' records'; rPag('ov-pg',ovPg,Math.ceil(ovF.length/ovPS),function(p){ovPg=p;renderOv();}); }
-function rPag(id,cur,tot,cb){ if(tot<=1){document.getElementById(id).innerHTML='';return;} var h='<div class="pb '+(cur===1?'off':'')+'" onclick="('+cb.toString()+')'+'('+(cur-1)+')">&#8249;</div>'; for(var i=1;i<=tot;i++){if(i===1||i===tot||Math.abs(i-cur)<=2)h+='<div class="pb '+(i===cur?'on':'')+'" onclick="('+cb.toString()+')('+i+')">'+i+'</div>';else if(Math.abs(i-cur)===3)h+='<div class="pb off">…</div>';} h+='<div class="pb '+(cur===tot?'off':'')+'" onclick="('+cb.toString()+')'+'('+(cur+1)+')">&#8250;</div>'; document.getElementById(id).innerHTML=h; }
-function flt(q,e,rt,nm){ return AD.filter(function(r){if(q&&!(r[C.name]||'').toLowerCase().includes(q)&&!(r[C.empId]||'').toLowerCase().includes(q)&&!(r[C.email]||'').toLowerCase().includes(q))return false;if(e&&(r[C.elig]||'').toUpperCase()!==e)return false;if(rt&&rating(r).toString()!==rt)return false;if(nm&&r[C.name]!==nm)return false;return true;}); }
-function tbSrch(){ tbF=flt(document.getElementById('tb-s').value.toLowerCase(),'',document.getElementById('tb-r').value,document.getElementById('tb-n').value);tbPg=1;renderTb(); }
-function tbPsC(){ tbPS=parseInt(document.getElementById('tb-ps').value);tbPg=1;renderTb(); }
-function ovSrch(){ ovF=flt(document.getElementById('ov-s').value.toLowerCase(),'',document.getElementById('ov-r').value,'');ovPg=1;renderOv(); }
-function srtArr(arr,i,d){ var c=TC[i]; if(!c.k) return arr; var k=c.k(); return arr.slice().sort(function(a,b){var va=a[k]||'',vb=b[k]||'';var na=parseFloat(va),nb=parseFloat(vb);if(!isNaN(na)&&!isNaN(nb))return(na-nb)*d;return va.localeCompare(vb)*d;}); }
-function tbSrt(i){ if(tbSC===i)tbSD*=-1;else{tbSC=i;tbSD=1;} tbF=srtArr(tbF,i,tbSD);tbPg=1;renderTb(); document.querySelectorAll('#tb-th th').forEach(function(t,j){t.classList.toggle('sorted',j===i);t.querySelector('span').textContent=j===i?(tbSD===1?'↑':'↓'):'↕';}); }
+
+function renderTb(){
+  var s=(tbPg-1)*tbPS, pg=tbF.slice(s,s+tbPS);
+  document.getElementById('tb-tb').innerHTML=pg.length?tRows(pg):emR();
+  document.getElementById('tb-c').textContent=tbF.length+' records';
+  rPag('tb-pg',tbPg,Math.ceil(tbF.length/tbPS),function(p){tbPg=p;renderTb();});
+}
+function renderOv(){
+  var s=(ovPg-1)*ovPS, pg=ovF.slice(s,s+ovPS);
+  document.getElementById('ov-tb').innerHTML=pg.length?tRows(pg):emR();
+  document.getElementById('ov-c').textContent=ovF.length+' records';
+  rPag('ov-pg',ovPg,Math.ceil(ovF.length/ovPS),function(p){ovPg=p;renderOv();});
+}
+function rPag(id,cur,tot,cb){
+  if(tot<=1){document.getElementById(id).innerHTML='';return;}
+  var h='<div class="pb '+(cur===1?'off':'')+'" onclick="('+cb.toString()+')'+'('+(cur-1)+')">&#8249;</div>';
+  for(var i=1;i<=tot;i++){
+    if(i===1||i===tot||Math.abs(i-cur)<=2) h+='<div class="pb '+(i===cur?'on':'')+'" onclick="('+cb.toString()+')('+i+')">'+i+'</div>';
+    else if(Math.abs(i-cur)===3) h+='<div class="pb off">&hellip;</div>';
+  }
+  h+='<div class="pb '+(cur===tot?'off':'')+'" onclick="('+cb.toString()+')'+'('+(cur+1)+')">&#8250;</div>';
+  document.getElementById(id).innerHTML=h;
+}
+
+// Sorting — generic, works for both tables
+function srtArr(arr,i,dir){
+  var c=TC[i]; if(!c||!c.sk||!c.k) return arr;
+  var key=c.k();
+  if(!key) return arr;
+  return arr.slice().sort(function(a,b){
+    var va=a[key]||'', vb=b[key]||'';
+    var na=parseFloat(va.toString().replace(/,/g,'')), nb=parseFloat(vb.toString().replace(/,/g,''));
+    if(!isNaN(na)&&!isNaN(nb)) return (na-nb)*dir;
+    return va.toString().localeCompare(vb.toString())*dir;
+  });
+}
+function tbSrt(i){
+  if(!TC[i]||!TC[i].sk) return;
+  if(tbSC===i) tbSD*=-1; else{tbSC=i;tbSD=1;}
+  tbF=srtArr(tbF,i,tbSD); tbPg=1; renderTb();
+  document.querySelectorAll('#tb-th th').forEach(function(t,j){
+    t.classList.toggle('sorted',j===i);
+    var sp=t.querySelector('span'); if(sp) sp.textContent=j===i?(tbSD===1?'\u2191':'\u2193'):'\u2195';
+  });
+}
 function ovSrt(i){
+  if(!TC[i]||!TC[i].sk) return;
   if(ovSC===i) ovSD*=-1; else{ovSC=i;ovSD=1;}
-  ovF=srtArr(ovF,i,ovSD);ovPg=1;renderOv();
-  document.querySelectorAll('#ov-th th').forEach(function(t,j){t.classList.toggle('sorted',j===i);t.querySelector('span').textContent=j===i?(ovSD===1?'\u2191':'\u2193'):'\u2195';});
+  ovF=srtArr(ovF,i,ovSD); ovPg=1; renderOv();
+  document.querySelectorAll('#ov-th th').forEach(function(t,j){
+    t.classList.toggle('sorted',j===i);
+    var sp=t.querySelector('span'); if(sp) sp.textContent=j===i?(ovSD===1?'\u2191':'\u2193'):'\u2195';
+  });
 }
 
-// ════════════════════════════════════════════════════════════
-// EMPLOYEE CARDS — Final_Appraisal + Master_Sheet joined on Emp_ID
-// ════════════════════════════════════════════════════════════
-function getMaster(empId){
-  if(!MD.length||!MC.empId) return null;
-  return MD.find(function(m){return (m[MC.empId]||'').trim()===(empId||'').trim();}) || null;
+// Filtering
+function flt(q,rt,nm){
+  return AD.filter(function(r){
+    if(q&&!(r[C.name]||'').toLowerCase().includes(q)&&!(r[C.empId]||'').toLowerCase().includes(q)&&!(r[C.email]||'').toLowerCase().includes(q)) return false;
+    if(rt&&ratingDisp(r).toString()!==rt) return false;
+    if(nm&&r[C.name]!==nm) return false;
+    return true;
+  });
+}
+function tbSrch(){ tbF=flt(document.getElementById('tb-s').value.toLowerCase(),document.getElementById('tb-r').value,document.getElementById('tb-n').value);tbPg=1;renderTb(); }
+function tbPsC(){ tbPS=parseInt(document.getElementById('tb-ps').value);tbPg=1;renderTb(); }
+function ovSrch(){ ovF=flt(document.getElementById('ov-s').value.toLowerCase(),document.getElementById('ov-r').value,'');ovPg=1;renderOv(); }
+function expCSV(){
+  if(!tbF.length) return;
+  var rows=[AH.join(',')].concat(tbF.map(function(r){return AH.map(function(h){return '"'+(r[h]||'').replace(/"/g,'""')+'"';}).join(',');}));
+  var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'})); a.download='spyne_appraisal.csv'; a.click();
 }
 
+// ═══════════════════════════════════════════════════
+// EMPLOYEE CARDS
+// ═══════════════════════════════════════════════════
 function buildEL(){ empF=AD.slice(); renderEL(); }
-function fltEL(){ var q=document.getElementById('cs').value.toLowerCase(); empF=AD.filter(function(r){return (r[C.name]||'').toLowerCase().includes(q)||(r[C.empId]||'').toLowerCase().includes(q);}); renderEL(); }
-function renderEL(){ document.getElementById('elB').innerHTML=empF.map(function(r,i){return '<div class="eli '+(i===0?'on':'')+'" id="eli'+i+'" onclick="selE('+i+')">'+(pImg(r[C.photo],r[C.name]))+'<div><div class="eln">'+(r[C.name]||'—')+'</div><div class="elid">'+(r[C.empId]||'')+'</div></div></div>';}).join(''); if(empF.length) selE(0); }
-function selE(i){ empIdx=i; document.querySelectorAll('.eli').forEach(function(el,j){el.classList.toggle('on',j===i);}); renderEC(empF[i],i,empF.length); }
-function navE(d){ var ni=Math.max(0,Math.min(empF.length-1,empIdx+d)); selE(ni); var el=document.getElementById('eli'+ni); if(el) el.scrollIntoView({block:'nearest'}); }
+function fltEL(){
+  var q=document.getElementById('cs').value.toLowerCase();
+  empF=AD.filter(function(r){return (r[C.name]||'').toLowerCase().includes(q)||(r[C.empId]||'').toLowerCase().includes(q);});
+  renderEL();
+}
+function renderEL(){
+  document.getElementById('elB').innerHTML=empF.map(function(r,i){
+    return '<div class="eli '+(i===0?'on':'')+'" id="eli'+i+'" onclick="selE('+i+')">'
+      +pImg(r[C.photo],r[C.name])
+      +'<div><div class="eln">'+(r[C.name]||'—')+'</div><div class="elid">'+(r[C.empId]||'')+'</div></div></div>';
+  }).join('');
+  if(empF.length) selE(0);
+}
+function selE(i){
+  empIdx=i;
+  document.querySelectorAll('.eli').forEach(function(el,j){el.classList.toggle('on',j===i);});
+  renderEC(empF[i],i,empF.length);
+}
+function navE(d){
+  var ni=Math.max(0,Math.min(empF.length-1,empIdx+d)); selE(ni);
+  var el=document.getElementById('eli'+ni); if(el) el.scrollIntoView({block:'nearest'});
+}
 
 function renderEC(r,idx,tot){
-  var el=elig(r), rt=rating(r), ws=weightedScore(r), fc=N(r[C.factor]), fp=Math.min((fc/1.5)*100,100);
+  var rt=ratingDisp(r), ws=weightedScore(r);
+  var wsC=ws>=4?'#00e5a0':ws>=3?'#f7c948':ws>=2?'#ff6b35':'#ff4757';
   var mr=getMaster(r[C.empId]);
 
-  // All appraisal fields not in standard set
-  var stdK={}; Object.values(C).forEach(function(v){if(v)stdK[v]=1;});
-  var extra=AH.filter(function(h){return !stdK[h]&&r[h];});
+  // Photo
+  var photoSrc=driveThumb(r[C.photo]||'');
 
-  // Master fields grouped
-  var mFields=[];
-  if(mr){ MH.forEach(function(h){ if(h!==MC.empId&&mr[h]) mFields.push({l:h,v:mr[h]}); }); }
+  // New Annual CTC = round(newCtcM)*12
+  var newCtcMval=C.newCtcM?N(r[C.newCtcM]):0;
+  var newAnnual=newCtcMval?Math.round(newCtcMval)*12:0;
+  var hikeVal=C.hike?N(r[C.hike]):0;
+  if(!newAnnual && hikeVal && N(r[C.ctc])){ newAnnual=Math.round(N(r[C.ctc])*(1+hikeVal/100)); }
 
-  // Month-on-month trend from master (look for monthly cols like Apr, May, Jun etc or date columns)
-  var monthCols=[];
+  // All extra appraisal cols
+  var std={}; Object.values(C).forEach(function(v){if(v)std[v]=1;});
+  var extra=AH.filter(function(h){return !std[h]&&r[h];});
+
+  // Master extra + monthly trend cols
+  var mExtra=[], mTrend=[];
   if(mr){
     MH.forEach(function(h){
+      if(h===MC.empId) return;
       var l=h.toLowerCase();
-      if(/jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/.test(l)||/month|m[0-9]/.test(l)){
-        if(mr[h]!==undefined&&mr[h]!=='') monthCols.push({l:h,v:mr[h]});
-      }
+      if(/jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|month|q[1-4]/.test(l)) mTrend.push({l:h,v:mr[h]});
+      else if(mr[h]) mExtra.push({l:h,v:mr[h]});
     });
   }
 
-  // Weighted score color + bar
-  var wsColor = ws>=4?'#00e5a0':ws>=3?'#f7c948':ws>=2?'#ff6b35':'#ff4757';
-  var wsPct = Math.min(100,(ws/5)*100);
-
-  // Photo URL — use direct Google Drive URL if it's a drive link
-  var photoUrl = r[C.photo]||'';
-  if(photoUrl.includes('drive.google.com/file/d/')){
-    var m=photoUrl.match(/\/d\/([^\/\?]+)/);
-    if(m) photoUrl='https://drive.google.com/thumbnail?id='+m[1]+'&sz=w200';
-  }
-
   var html2='<div class="edc">'
-    +'<div class="enav"><button class="nb" onclick="navE(-1)">&#8592; Prev</button><span class="nc">'+(idx+1)+' of '+tot+'</span><button class="nb" onclick="navE(1)">Next &#8594;</button></div>'
-
-    // Hero section
+    // nav
+    +'<div class="enav"><button class="nb" onclick="navE(-1)">\u2190 Prev</button><span class="nc">'+(idx+1)+' of '+tot+'</span><button class="nb" onclick="navE(1)">Next \u2192</button></div>'
+    // hero
     +'<div class="ehero"><div class="ephW">'
-      +(photoUrl?'<img class="eph" src="'+photoUrl+'" onerror="this.src=\'\';this.outerHTML=\'<div class=eini>'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>\'" alt="">'
-                :'<div class="eini">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>')
-      +'<div class="esd '+(el?'esdY':'esdN')+'"></div>'
-    +'</div>'
-    +'<div style="flex:1">'
+      +(photoSrc
+        ?'<img class="eph" src="'+photoSrc+'" crossorigin="anonymous" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'" alt=""><div class="eini" style="display:none">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>'
+        :'<div class="eini">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>')
+      +'</div>'
+    +'<div style="flex:1;min-width:0">'
       +'<div class="ehN">'+(r[C.name]||'—')+'</div>'
-      +'<div class="ehID">'+(r[C.empId]||'—')+(mr&&mr[MC.desig]?' · '+mr[MC.desig]:'')+'</div>'
+      +'<div class="ehID">'+(r[C.empId]||'—')+(mr&&mr[MC.desig]?' \u00b7 '+mr[MC.desig]:'')+'</div>'
       +'<div class="ehE">'+(r[C.email]||'—')+'</div>'
       +'<div class="ehtg">'
-        +'<span class="tg tgR">★ '+(rt||'N/A')+'</span>'
-        +'<span class="tg" style="background:rgba(0,212,255,.1);color:'+wsColor+';border:1px solid '+wsColor+'40">W.Score '+ws.toFixed(2)+'</span>'
+        +'<span class="tg tgR">\u2605 '+rt+'</span>'
+        +'<span class="tg" style="background:rgba(0,212,255,.1);color:'+wsC+';border:1px solid '+wsC+'33">W '+ws.toFixed(2)+'</span>'
         +(mr&&mr[MC.dept]?'<span class="tg tgD">'+mr[MC.dept]+'</span>':'<span class="tg tgD">Delivery</span>')
         +(mr&&mr[MC.team]?'<span class="tg tgP">'+mr[MC.team]+'</span>':'')
-      +'</div>'
-    +'</div></div>'
-
-    // Weighted Score bar
-    +'<div class="fm" style="margin-bottom:14px">'
-      +'<div class="fmT">Weighted Appraisal Score <span style="float:right;color:'+wsColor+';font-weight:700;font-size:16px">'+ws.toFixed(2)+' / 5</span></div>'
-      +'<div class="fmB"><div class="fmF" style="width:'+wsPct+'%;background:'+wsColor+'"></div></div>'
+      +'</div></div></div>'
+    // W.Score bar
+    +'<div class="fm" style="margin-bottom:16px">'
+      +'<div class="fmT">Weighted Score <span style="float:right;color:'+wsC+';font-weight:700;font-size:17px">'+ws.toFixed(2)+'/5</span></div>'
+      +'<div class="fmB"><div class="fmF" style="width:'+(ws/5*100).toFixed(0)+'%;background:'+wsC+'"></div></div>'
       +'<div class="fmL"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>'
-      +'<div style="font-size:9px;color:var(--mu);font-family:DM Mono,monospace;margin-top:4px">Rating×0.4 + Mins×0.3 + Leave perf×0.2 + OT×0.1</div>'
+      +'<div style="font-size:9px;color:var(--mu);margin-top:4px;font-family:DM Mono,monospace">Rating\u00d70.4 + Mins\u00d70.3 + LeavePerf\u00d70.2 + OT\u00d70.1</div>'
     +'</div>'
-
-    // Metrics grid
+    // metrics
     +'<div class="emg">'
-      +'<div class="emc"><div class="emlbl">Current CTC</div><div class="emv ca4">'+fmt(r[C.ctc])+'</div></div>'
-      +'<div class="emc"><div class="emlbl">CTC Monthly</div><div class="emv ca4" style="font-size:13px">'+fmt(r[C.ctcM])+'</div></div>'
-      +'<div class="emc"><div class="emlbl">AVG Rating</div><div class="emv ca3">'+(rt||'—')+'<span style="font-size:11px;color:var(--mu)">/5</span></div></div>'
-      +'<div class="emc"><div class="emlbl">Avg Mins</div><div class="emv ca">'+(r[C.avgMins]||'—')+'</div></div>'
-      +'<div class="emc"><div class="emlbl">Leaves</div><div class="emv '+(N(r[C.leaves])>=20?'crd':'ca3')+'">'+(r[C.leaves]||'0')+'</div></div>'
-      +'<div class="emc"><div class="emlbl">Leave Rating</div><div class="emv '+(N(r[C.leaveRating])>=3?'crd':'ca3')+'">'+(r[C.leaveRating]||'—')+'</div></div>'
-      +'<div class="emc"><div class="emlbl">DOJ</div><div class="emv" style="font-size:12px">'+(r[C.doj]||'—')+'</div></div>'
-      +'<div class="emc"><div class="emlbl">OT</div><div class="emv ca">'+(r[C.ot]||'—')+'</div></div>'
+      +'<div class="emc"><div class="emlbl">Annual CTC</div><div class="emv ca4">'+fmt(r[C.ctc])+'</div></div>'
+      +'<div class="emc"><div class="emlbl">Monthly CTC</div><div class="emv ca4" style="font-size:13px">'+fmt(r[C.ctcM])+'</div></div>'
+      +'<div class="emc"><div class="emlbl">Final Rating</div><div class="emv ca3">'+rt+'<span style="font-size:10px;color:var(--mu)">/5</span></div></div>'
+      +'<div class="emc"><div class="emlbl">Avg Mins</div><div class="emv ca">'+( r[C.avgMins]||'—')+'</div></div>'
+      +'<div class="emc"><div class="emlbl">Leaves</div><div class="emv '+(N(r[C.leaves])>=20?'crd':'ca3')+'">'+( r[C.leaves]||'0')+'</div></div>'
+      +'<div class="emc"><div class="emlbl">Leave Rating</div><div class="emv '+(N(r[C.leaveRating])>=3?'crd':'ca3')+'">'+( r[C.leaveRating]||'—')+'</div></div>'
+      +'<div class="emc"><div class="emlbl">OT</div><div class="emv ca">'+( r[C.ot]||'—')+'</div></div>'
+      +'<div class="emc"><div class="emlbl">DOJ</div><div class="emv" style="font-size:12px">'+( r[C.doj]||'—')+'</div></div>'
       +(r[C.variable]?'<div class="emc"><div class="emlbl">Variable</div><div class="emv ca2">'+fmt(r[C.variable])+'</div></div>':'')
       +(mr&&mr[MC.manager]?'<div class="emc"><div class="emlbl">Manager</div><div class="emv" style="font-size:12px">'+mr[MC.manager]+'</div></div>':'')
       +(mr&&mr[MC.loc]?'<div class="emc"><div class="emlbl">Location</div><div class="emv" style="font-size:12px">'+mr[MC.loc]+'</div></div>':'')
-      +(mr&&mr[MC.band]?'<div class="emc"><div class="emlbl">Band</div><div class="emv" style="color:var(--ac5)">'+mr[MC.band]+'</div></div>':'')
+      +(mr&&mr[MC.band]?'<div class="emc"><div class="emlbl">Band/Grade</div><div class="emv" style="color:var(--ac5)">'+mr[MC.band]+'</div></div>':'')
     +'</div>'
-
-    // Star rating
-    +'<div style="margin-bottom:18px"><div class="emlbl" style="margin-bottom:5px">AVG RATING</div>'
+    // stars
+    +'<div style="margin-bottom:18px"><div class="emlbl" style="margin-bottom:5px">FINAL RATING</div>'
     +'<div class="stars">'+[1,2,3,4,5].map(function(i){return '<span class="star '+(i<=rt?'on':'')+'">&#9733;</span>';}).join('')+'</div></div>'
+    // month trend
+    +(mTrend.length?'<div class="msec"><div class="msec-title">Month-on-Month Trend <span class="ms-pill">Master_Sheet</span></div>'
+      +'<div style="overflow-x:auto"><div style="display:flex;gap:12px;padding-bottom:6px;min-width:max-content">'
+      +mTrend.map(function(m){var v=parseFloat(m.v)||0;var p=Math.min(100,(v/5)*100);var c=v>=4?'#00e5a0':v>=3?'#f7c948':v>=2?'#ff6b35':'#ff4757';return '<div style="display:flex;flex-direction:column;align-items:center;gap:5px;min-width:48px"><div style="height:56px;width:26px;background:var(--b1);border-radius:4px;overflow:hidden;display:flex;align-items:flex-end"><div style="width:100%;background:'+c+';height:'+p+'%;border-radius:4px"></div></div><div style="font-size:9px;color:var(--mu);font-family:DM Mono,monospace;text-align:center">'+m.l+'</div><div style="font-size:10px;font-weight:700;color:'+c+'">'+m.v+'</div></div>';}).join('')+'</div></div></div>':'')
+    // extra appraisal fields
+    +(extra.length?'<div class="msec"><div class="msec-title">All Fields <span class="ms-pill">Final_Appraisal</span></div><div class="mfg">'+extra.map(function(h){return '<div class="mfc"><div class="mfl">'+h+'</div><div class="mfv">'+r[h]+'</div></div>';}).join('')+'</div></div>':'')
+    // master extra
+    +(mExtra.length?'<div class="msec"><div class="msec-title">HR Data <span class="ms-pill">Master_Sheet</span></div><div class="mfg">'+mExtra.map(function(f){return '<div class="mfc"><div class="mfl">'+f.l+'</div><div class="mfv">'+f.v+'</div></div>';}).join('')+'</div></div>':'')
 
-    // Month-on-month trend from Master Sheet
-    +(monthCols.length?
-      '<div class="msec"><div class="msec-title">Month-on-Month Trend <span class="ms-pill">Master_Sheet</span></div>'
-      +'<div style="overflow-x:auto"><div style="display:flex;gap:10px;padding-bottom:8px;min-width:max-content">'
-      +monthCols.map(function(m){
-        var v=parseFloat(m.v)||0;
-        var mx=5,pct=Math.min(100,(v/mx)*100);
-        var c=v>=4?'#00e5a0':v>=3?'#f7c948':v>=2?'#ff6b35':'#ff4757';
-        return '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;min-width:52px">'
-          +'<div style="height:60px;width:28px;background:var(--b1);border-radius:4px;overflow:hidden;display:flex;align-items:flex-end">'
-          +'<div style="width:100%;background:'+c+';height:'+pct+'%;border-radius:4px;transition:height .8s"></div></div>'
-          +'<div style="font-size:9px;color:var(--mu);font-family:DM Mono,monospace;text-align:center">'+m.l+'</div>'
-          +'<div style="font-size:10px;font-weight:700;color:'+c+'">'+m.v+'</div>'
-          +'</div>';
-      }).join('')+'</div></div></div>'
-    :'')
-
-    // Extra appraisal fields
-    +(extra.length?'<div class="msec"><div class="msec-title">All Appraisal Fields <span class="ms-pill">Final_Appraisal</span></div>'
-      +'<div class="mfg">'+extra.map(function(h){return '<div class="mfc"><div class="mfl">'+h+'</div><div class="mfv">'+r[h]+'</div></div>';}).join('')+'</div></div>':'')
-
-    // Master Sheet extra fields
-    +(mFields.length&&!monthCols.length?'<div class="msec"><div class="msec-title">HR Data <span class="ms-pill">Master_Sheet</span></div>'
-      +'<div class="mfg">'+mFields.map(function(f){return '<div class="mfc"><div class="mfl">'+f.l+'</div><div class="mfv">'+f.v+'</div></div>';}).join('')+'</div></div>':'')
-
-    // ── EXPANDABLE: Hike & New CTC ────────────────────────────
-    +'<div class="hike-section" id="hike-'+idx+'">'
-      +'<div class="hike-toggle" onclick="toggleHike('+idx+')">'
-        +'<span style="font-size:12px;font-weight:600;color:var(--tx2)">Hike % &amp; New CTC</span>'
-        +'<span class="hike-arrow" id="ha-'+idx+'">&#9660;</span>'
-      +'</div>'
-      +'<div class="hike-body" id="hb-'+idx+'" style="display:none">'
-        +'<div class="emg" style="margin-top:12px">'
-          +(r[C.hike]?'<div class="emc"><div class="emlbl">Hike %</div><div class="emv ca3">'+r[C.hike]+'%</div></div>':'<div class="emc"><div class="emlbl">Hike %</div><div class="emv mu2">Not set</div></div>')
-          +(r[C.newCtc]?'<div class="emc"><div class="emlbl">New CTC</div><div class="emv ca4">'+fmt(r[C.newCtc])+'</div></div>':'<div class="emc"><div class="emlbl">New CTC</div><div class="emv mu2">Not set</div></div>')
-          +(r[C.factor]?'<div class="emc"><div class="emlbl">Factor</div><div class="emv ca3">'+r[C.factor]+'</div></div>':'')
-          +(r[C.prorata]?'<div class="emc"><div class="emlbl">Prorata</div><div class="emv mu2">'+r[C.prorata]+'</div></div>':'')
-        +'</div>'
-        +(r[C.ctc]&&r[C.hike]&&N(r[C.hike])>0?
-          '<div style="background:rgba(0,229,160,.06);border:1px solid rgba(0,229,160,.2);border-radius:var(--rs);padding:12px;margin-top:8px;font-size:12px">'
-          +'<span style="color:var(--mu)">Current: </span><b style="color:var(--ac4)">'+fmt(r[C.ctc])+'</b>'
-          +' &#8594; <span style="color:var(--mu)">After '+N(r[C.hike])+'% hike: </span>'
-          +'<b style="color:var(--ac3)">'+fmt(N(r[C.ctc])*(1+N(r[C.hike])/100))+'</b>'
-          +'</div>':
-          (r[C.newCtc]?'<div style="background:rgba(0,229,160,.06);border:1px solid rgba(0,229,160,.2);border-radius:var(--rs);padding:12px;margin-top:8px;font-size:12px">'
-          +'<span style="color:var(--mu)">Current: </span><b style="color:var(--ac4)">'+fmt(r[C.ctc])+'</b>'
-          +' &#8594; <b style="color:var(--ac3)">'+fmt(r[C.newCtc])+'</b>'
-          +'</div>':''))
-      +'</div>'
+    // ── EXPANDABLE HIKE & NEW CTC ────────────────
+    +'<div class="hike-section"><div class="hike-toggle" onclick="toggleHike(this)">'
+      +'<span style="font-size:12px;font-weight:600;color:var(--tx2)">&#9654; Hike % &amp; New Annual CTC</span>'
     +'</div>'
+    +'<div class="hike-body" style="display:none">'
+      +'<div class="emg" style="margin-top:12px">'
+        +(hikeVal?'<div class="emc"><div class="emlbl">Hike %</div><div class="emv ca3">'+hikeVal+'%</div></div>':'<div class="emc"><div class="emlbl">Hike %</div><div class="emv mu2">Not set</div></div>')
+        +(newCtcMval?'<div class="emc"><div class="emlbl">New Monthly</div><div class="emv ca3">'+fmt(Math.round(newCtcMval))+'</div></div>':'')
+        +(newAnnual?'<div class="emc"><div class="emlbl">New Annual CTC</div><div class="emv ca4" style="font-size:14px">'+fmt(newAnnual)+'</div></div>':'<div class="emc"><div class="emlbl">New Annual CTC</div><div class="emv mu2">Not set</div></div>')
+        +(r[C.prorata]?'<div class="emc"><div class="emlbl">Prorata</div><div class="emv mu2">'+r[C.prorata]+'</div></div>':'')
+      +'</div>'
+      +(N(r[C.ctc])&&newAnnual&&newAnnual!==N(r[C.ctc])
+        ?'<div style="background:rgba(0,229,160,.07);border:1px solid rgba(0,229,160,.2);border-radius:var(--rs);padding:14px;margin-top:8px;font-size:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+          +'<span><span style="color:var(--mu)">Current: </span><b style="color:var(--ac4)">'+fmt(r[C.ctc])+'</b></span>'
+          +'<span style="color:var(--mu);font-size:18px">\u2192</span>'
+          +'<span><span style="color:var(--mu)">New: </span><b style="color:var(--ac3)">'+fmt(newAnnual)+'</b></span>'
+          +(newAnnual>N(r[C.ctc])?'<span style="color:var(--ac3);font-size:11px;font-family:DM Mono,monospace">+'+fmt(newAnnual-N(r[C.ctc]))+' (+'+((newAnnual/N(r[C.ctc])-1)*100).toFixed(1)+'%)</span>':'')
+        +'</div>':'')
+    +'</div></div>'
 
     +'</div>';
 
   document.getElementById('edet').innerHTML=html2;
 }
-
-function toggleHike(idx){
-  var body=document.getElementById('hb-'+idx);
-  var arrow=document.getElementById('ha-'+idx);
-  if(!body) return;
+function toggleHike(btn){
+  var body=btn.nextElementSibling;
   var open=body.style.display!=='none';
   body.style.display=open?'none':'block';
-  arrow.innerHTML=open?'&#9660;':'&#9650;';
+  btn.querySelector('span').innerHTML=(open?'\u25ba':'\u25bc')+' Hike % &amp; New Annual CTC';
 }
 
-// ════════════════════════════════════════════════════════════
-// DRILL DOWN
-// ════════════════════════════════════════════════════════════
-function mTbl(rows,cols){
-  return '<div class="tw" style="margin-top:8px"><div class="tscr"><table><thead><tr>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('')+'</tr></thead><tbody>'
-    +rows.map(function(r){
-      var mr=getMaster(r[C.empId]);
-      return '<tr>'+cols.map(function(c){
-        if(c==='Photo')       return '<td>'+pImg(r[C.photo],r[C.name])+'</td>';
-        if(c==='Name')        return '<td style="font-weight:500">'+(r[C.name]||'—')+'</td>';
-        if(c==='Emp ID')      return '<td class="mu2">'+(r[C.empId]||'—')+'</td>';
-        if(c==='Email')       return '<td style="font-size:11px;color:var(--ac);font-family:DM Mono,monospace">'+(r[C.email]||'—')+'</td>';
-        if(c==='Current CTC') return '<td class="ctcv">'+fmt(r[C.ctc])+'</td>';
-        if(c==='Factor')      return '<td class="mu2">'+(N(r[C.factor])||'—')+'</td>';
-        if(c==='Eligibility'){var y=elig(r);return '<td><span class="eb '+(y?'ey':'en')+'">'+(y?'✓':'✗')+'</span></td>';}
-        if(c==='AVG Rating')  {var v=rating(r);return '<td><div class="rb rb'+(v||0)+'">'+(v||'—')+'</div></td>';}
-        if(c==='Leaves')      {var v=N(r[C.leaves]);return '<td class="'+(v>=20?'lvhi':'mu2')+'">'+(r[C.leaves]||'0')+'</td>';}
-        if(c==='Avg Mins')    return '<td class="mu2">'+(r[C.avgMins]||'—')+'</td>';
-        // Master_Sheet cols
-        if(c==='Dept'&&mr)    return '<td class="mu2">'+(mr[MC.dept]||'—')+'</td>';
-        if(c==='Designation'&&mr) return '<td class="mu2">'+(mr[MC.desig]||'—')+'</td>';
-        if(c==='Manager'&&mr) return '<td class="mu2">'+(mr[MC.manager]||'—')+'</td>';
-        return '<td class="mu2">—</td>';
-      }).join('')+'</tr>';
-    }).join('')
-    +'</tbody></table></div></div>';
+// ═══════════════════════════════════════════════════
+// DRILL DOWN — all levels with full tables + sorting
+// ═══════════════════════════════════════════════════
+function ddTable(rows,cols,sortable){
+  var tid='ddt-'+Math.random().toString(36).slice(2,7);
+  var colDefs=cols.map(function(c){
+    return {l:c,sortKey:function(r){
+      if(c==='Rating')   return finalRating(r);
+      if(c==='W.Score')  return weightedScore(r);
+      if(c==='Leaves')   return N(r[C.leaves]);
+      if(c==='Avg Mins') return N(r[C.avgMins]);
+      if(c==='CTC')      return N(r[C.ctc]);
+      if(c==='Lv.Rtg')  return N(r[C.leaveRating]);
+      if(c==='OT')       return N(r[C.ot]);
+      if(c==='Name')     return r[C.name]||'';
+      if(c==='Emp ID')   return r[C.empId]||'';
+      return '';
+    }, render:function(r){
+      if(c==='Photo')   return '<td>'+pImg(r[C.photo],r[C.name])+'</td>';
+      if(c==='Name')    return '<td style="font-weight:500;min-width:120px">'+(r[C.name]||'—')+'</td>';
+      if(c==='Emp ID')  return '<td class="mu2">'+(r[C.empId]||'—')+'</td>';
+      if(c==='Email')   return '<td style="font-size:11px;color:var(--ac)">'+(r[C.email]||'—')+'</td>';
+      if(c==='CTC')     return '<td class="ctcv">'+fmt(r[C.ctc])+'</td>';
+      if(c==='Rating')  {var v=ratingDisp(r);return '<td><div class="rb rb'+(v||0)+'">'+(v||'—')+'</div></td>';}
+      if(c==='W.Score') {var s=weightedScore(r);var col=s>=4?'#00e5a0':s>=3?'#f7c948':s>=2?'#ff6b35':'#ff4757';return '<td><b style="color:'+col+';font-family:DM Mono,monospace;font-size:12px">'+(s>0?s.toFixed(2):'—')+'</b></td>';}
+      if(c==='Avg Mins')return '<td class="mu2">'+(r[C.avgMins]||'—')+'</td>';
+      if(c==='Leaves')  {var v=N(r[C.leaves]);return '<td class="'+(v>=20?'lvhi':'mu2')+'">'+(r[C.leaves]||'0')+(v>=20?' \u26a0':'')+'</td>';}
+      if(c==='Lv.Rtg') return '<td class="mu2">'+(r[C.leaveRating]||'—')+'</td>';
+      if(c==='OT')      return '<td class="mu2">'+(r[C.ot]||'—')+'</td>';
+      if(c==='DOJ')     return '<td class="mu2">'+(r[C.doj]||'—')+'</td>';
+      if(c==='Variable')return '<td class="mu2">'+fmt(r[C.variable])+'</td>';
+      return '<td class="mu2">—</td>';
+    }};
+  });
+
+  // Sort state per table
+  window._ddSort=window._ddSort||{};
+  window._ddSort[tid]={col:-1,dir:1};
+
+  function renderDDTable(data, sc, sd){
+    var sorted=sc>=0?data.slice().sort(function(a,b){
+      var va=colDefs[sc].sortKey(a), vb=colDefs[sc].sortKey(b);
+      if(typeof va==='number'&&typeof vb==='number') return (va-vb)*sd;
+      return va.toString().localeCompare(vb.toString())*sd;
+    }):data;
+    return sorted.map(function(r){
+      return '<tr onclick="openEmpCard(\''+r[C.empId]+'\')" style="cursor:pointer">'+colDefs.map(function(c){return c.render(r);}).join('')+'</tr>';
+    }).join('');
+  }
+
+  var heads=colDefs.map(function(c,i){
+    return '<th onclick="sortDDT(\''+tid+'\','+i+')" style="cursor:pointer">'+c.l+' <span id="'+tid+'-'+i+'">\u2195</span></th>';
+  }).join('');
+
+  var bodyId=tid+'-body';
+  window['sortDDT_data_'+tid]=rows;
+  var initHtml=renderDDTable(rows,-1,1);
+
+  // Store renderDDTable for re-use
+  window['sortDDT']=window['sortDDT']||function(id,i){
+    var st=window._ddSort[id];
+    if(st.col===i) st.dir*=-1; else{st.col=i;st.dir=1;}
+    var data=window['sortDDT_data_'+id];
+    var tbody=document.getElementById(id+'-body');
+    if(!tbody) return;
+    tbody.innerHTML=renderDDTable(data,st.col,st.dir);
+    document.querySelectorAll('[id^="'+id+'-"]').forEach(function(sp,j){
+      if(sp.id===id+'-body') return;
+      var ci=parseInt(sp.id.split('-').pop());
+      sp.textContent=ci===i?(st.dir===1?'\u2191':'\u2193'):'\u2195';
+    });
+  };
+
+  return '<div class="tw" style="margin-top:8px"><div class="tscr"><table>'
+    +'<thead><tr>'+heads+'</tr></thead>'
+    +'<tbody id="'+bodyId+'">'+initHtml+'</tbody>'
+    +'</table></div></div>';
+}
+
+function openEmpCard(empId){
+  var i=empF.findIndex(function(r){return r[C.empId]===empId;});
+  if(i<0){ empF=AD.slice(); renderEL(); i=empF.findIndex(function(r){return r[C.empId]===empId;}); }
+  if(i>=0){
+    goPg('cards', document.querySelector('.sbi[onclick*="cards"]'));
+    selE(i);
+    setTimeout(function(){var el=document.getElementById('eli'+i);if(el)el.scrollIntoView({block:'nearest'});},100);
+  }
 }
 
 function buildDD(){
   var d=AD;
   var rcol={5:'#00e5a0',4:'#00d4ff',3:'#f7c948',2:'#ff6b35',1:'#ff4757'};
 
-  // ── By Rating ─────────────────────────────────────────────
+  // ── By Rating ──────────────────────────────────
   var rg={5:[],4:[],3:[],2:[],1:[],0:[]};
-  d.forEach(function(r){var v=rating(r);var k=v>=1&&v<=5?v:0;rg[k].push(r);});
+  d.forEach(function(r){var v=ratingDisp(r);rg[v>=1&&v<=5?v:0].push(r);});
   document.getElementById('dd-r').innerHTML=[5,4,3,2,1].filter(function(s){return rg[s].length;}).map(function(s){
-    var grp=rg[s];
-    var avgW=(grp.reduce(function(a,r){return a+weightedScore(r);},0)/grp.length).toFixed(2);
-    var avgMins=grp.filter(function(r){return N(r[C.avgMins])>0;});
-    var avgM=avgMins.length?Math.round(avgMins.reduce(function(a,r){return a+N(r[C.avgMins]);},0)/avgMins.length):0;
-    return '<div class="dds">'
-      +'<div class="ddst" style="color:'+rcol[s]+'">&#9733; Rating '+s+' <span class="ddsub">'+grp.length+' employees · avg W.Score '+avgW+' · avg mins '+avgM+'</span></div>'
-      +ddTable(grp,['Photo','Name','Emp ID','CTC','W.Score','Rating','Avg Mins','Leaves'])
-      +'</div>';
+    var g=rg[s];
+    var avW=(g.reduce(function(a,r){return a+weightedScore(r);},0)/g.length).toFixed(2);
+    var avM=Math.round(g.filter(function(r){return N(r[C.avgMins])>0;}).reduce(function(a,r,_,arr){return a+N(r[C.avgMins])/arr.length;},0));
+    return '<div class="dds"><div class="ddst" style="color:'+rcol[s]+'">\u2605 Rating '+s
+      +' <span class="ddsub">'+g.length+' employees \u00b7 avg W.Score '+avW+(avM?' \u00b7 avg mins '+avM:'')+'</span></div>'
+      +ddTable(g,['Photo','Name','Emp ID','CTC','W.Score','Rating','Avg Mins','Leaves','OT'])+'</div>';
   }).join('');
 
-  // ── By Weighted Score ─────────────────────────────────────
-  var wg={'4.0-5.0':[],'3.0-4.0':[],'2.0-3.0':[],'<2.0':[]};
-  d.forEach(function(r){var s=weightedScore(r);if(s>=4)wg['4.0-5.0'].push(r);else if(s>=3)wg['3.0-4.0'].push(r);else if(s>=2)wg['2.0-3.0'].push(r);else wg['<2.0'].push(r);});
-  var wcol={'4.0-5.0':'#00e5a0','3.0-4.0':'#00d4ff','2.0-3.0':'#f7c948','<2.0':'#ff4757'};
+  // ── By W.Score ─────────────────────────────────
+  var wg={'4-5':[],  '3-4':[], '2-3':[], '0-2':[]};
+  var wGcol={'4-5':'#00e5a0','3-4':'#00d4ff','2-3':'#f7c948','0-2':'#ff4757'};
+  d.forEach(function(r){var s=weightedScore(r);if(s>=4)wg['4-5'].push(r);else if(s>=3)wg['3-4'].push(r);else if(s>=2)wg['2-3'].push(r);else wg['0-2'].push(r);});
   document.getElementById('dd-f').innerHTML=Object.keys(wg).filter(function(k){return wg[k].length;}).map(function(k){
-    var grp=wg[k].sort(function(a,b){return weightedScore(b)-weightedScore(a);});
-    return '<div class="dds">'
-      +'<div class="ddst" style="color:'+wcol[k]+'">&#9889; W.Score '+k+' <span class="ddsub">'+grp.length+' employees</span></div>'
-      +ddTable(grp,['Photo','Name','Emp ID','W.Score','Rating','Avg Mins','Leaves','CTC'])
-      +'</div>';
+    var g=wg[k].sort(function(a,b){return weightedScore(b)-weightedScore(a);});
+    return '<div class="dds"><div class="ddst" style="color:'+wGcol[k]+'">\u2605 W.Score '+k
+      +' <span class="ddsub">'+g.length+' employees</span></div>'
+      +ddTable(g,['Photo','Name','Emp ID','W.Score','Rating','Avg Mins','Leaves','CTC'])+'</div>';
   }).join('');
 
-  // ── By Leaves ─────────────────────────────────────────────
-  var lb=[
-    ['Excellent (0-5)',  function(r){return N(r[C.leaves])<=5;},  '#00e5a0'],
-    ['Good (6-10)',      function(r){var v=N(r[C.leaves]);return v>5&&v<=10;}, '#00d4ff'],
-    ['Moderate (11-15)',function(r){var v=N(r[C.leaves]);return v>10&&v<=15;},'#f7c948'],
-    ['High (16-20)',     function(r){var v=N(r[C.leaves]);return v>15&&v<=20;},'#ff6b35'],
-    ['Very High (20+)', function(r){return N(r[C.leaves])>20;},  '#ff4757']
-  ];
-  document.getElementById('dd-l').innerHTML=lb.filter(function(x){return d.filter(x[1]).length;}).map(function(x){
-    var grp=d.filter(x[1]).sort(function(a,b){return N(b[C.leaves])-N(a[C.leaves]);});
-    var avgW=(grp.reduce(function(a,r){return a+weightedScore(r);},0)/grp.length).toFixed(2);
-    return '<div class="dds">'
-      +'<div class="ddst" style="color:'+x[2]+'">&#127807; Leaves '+x[0]+' <span class="ddsub">'+grp.length+' employees · avg W.Score '+avgW+'</span></div>'
-      +ddTable(grp,['Name','Emp ID','Leaves','Lv.Rtg','W.Score','Rating','Avg Mins','CTC'])
-      +'</div>';
-  }).join('');
-
-  // ── By Eligibility → replaced with Avg Mins performance ──
-  var mg=[
-    ['Top performers (480+)', function(r){return N(r[C.avgMins])>=480;}, '#00e5a0'],
-    ['Good (450-479)',        function(r){var v=N(r[C.avgMins]);return v>=450&&v<480;}, '#00d4ff'],
-    ['Average (400-449)',     function(r){var v=N(r[C.avgMins]);return v>=400&&v<450;}, '#f7c948'],
-    ['Low (<400)',            function(r){var v=N(r[C.avgMins]);return v>0&&v<400;},   '#ff6b35'],
-    ['No Data',               function(r){return !N(r[C.avgMins]);},                    '#4a5470']
-  ];
+  // ── By Avg Mins ────────────────────────────────
+  var mg=[['Top 480+',function(r){return N(r[C.avgMins])>=480;},'#00e5a0'],['Good 450-479',function(r){var v=N(r[C.avgMins]);return v>=450&&v<480;},'#00d4ff'],['Avg 400-449',function(r){var v=N(r[C.avgMins]);return v>=400&&v<450;},'#f7c948'],['Low <400',function(r){var v=N(r[C.avgMins]);return v>0&&v<400;},'#ff6b35'],['No Data',function(r){return !N(r[C.avgMins]);},'#4a5470']];
   document.getElementById('dd-e').innerHTML=mg.filter(function(x){return d.filter(x[1]).length;}).map(function(x){
-    var grp=d.filter(x[1]).sort(function(a,b){return N(b[C.avgMins])-N(a[C.avgMins]);});
-    return '<div class="dds">'
-      +'<div class="ddst" style="color:'+x[2]+'">&#9200; Avg Mins '+x[0]+' <span class="ddsub">'+grp.length+' employees</span></div>'
-      +ddTable(grp,['Photo','Name','Emp ID','Avg Mins','W.Score','Rating','Leaves','CTC'])
-      +'</div>';
+    var g=d.filter(x[1]).sort(function(a,b){return N(b[C.avgMins])-N(a[C.avgMins]);});
+    return '<div class="dds"><div class="ddst" style="color:'+x[2]+'">\u23f0 Mins '+x[0]
+      +' <span class="ddsub">'+g.length+' employees</span></div>'
+      +ddTable(g,['Photo','Name','Emp ID','Avg Mins','W.Score','Rating','Leaves','CTC'])+'</div>';
   }).join('');
 
-  // ── Master Sheet ──────────────────────────────────────────
+  // ── By Leaves ──────────────────────────────────
+  var lb=[['0-5',function(r){return N(r[C.leaves])<=5;},'#00e5a0'],['6-10',function(r){var v=N(r[C.leaves]);return v>5&&v<=10;},'#00d4ff'],['11-15',function(r){var v=N(r[C.leaves]);return v>10&&v<=15;},'#f7c948'],['16-20',function(r){var v=N(r[C.leaves]);return v>15&&v<=20;},'#ff6b35'],['20+',function(r){return N(r[C.leaves])>20;},'#ff4757']];
+  document.getElementById('dd-l').innerHTML=lb.filter(function(x){return d.filter(x[1]).length;}).map(function(x){
+    var g=d.filter(x[1]).sort(function(a,b){return N(b[C.leaves])-N(a[C.leaves]);});
+    var avW=(g.reduce(function(a,r){return a+weightedScore(r);},0)/g.length).toFixed(2);
+    return '<div class="dds"><div class="ddst" style="color:'+x[2]+'">\ud83c\udf3f Leaves '+x[0]
+      +' <span class="ddsub">'+g.length+' employees \u00b7 avg W.Score '+avW+'</span></div>'
+      +ddTable(g,['Name','Emp ID','Leaves','Lv.Rtg','W.Score','Rating','Avg Mins','CTC'])+'</div>';
+  }).join('');
+
+  // ── Master Sheet ───────────────────────────────
   if(MD.length){
     var showH=MH.slice(0,12);
     document.getElementById('dd-m').innerHTML='<div class="dds">'
-      +'<div class="ddst" style="color:var(--ac4)">&#128193; Master_Sheet <span class="ddsub">'+MD.length+' records · '+MH.length+' columns: '+MH.slice(0,8).join(', ')+(MH.length>8?'…':'')+'</span></div>'
+      +'<div class="ddst" style="color:var(--ac4)">\ud83d\uddc2 Master_Sheet'
+      +' <span class="ddsub">'+MD.length+' records \u00b7 cols: '+MH.slice(0,6).join(', ')+(MH.length>6?'…':'')+'</span></div>'
       +'<div class="tw"><div class="tscr"><table>'
-      +'<thead><tr>'+showH.map(function(h){return '<th>'+h+'</th>';}).join('')+(MH.length>12?'<th>+more</th>':'')+'</tr></thead>'
-      +'<tbody>'+MD.slice(0,200).map(function(r){return '<tr>'+showH.map(function(h){return '<td class="mu2" style="max-width:140px;overflow:hidden;text-overflow:ellipsis" title="'+(r[h]||'')+'">'+(r[h]||'—')+'</td>';}).join('')+(MH.length>12?'<td class="mu2">…</td>':'')+'</tr>';}).join('')
-      +'</tbody></table></div></div>'
-      +(MD.length>200?'<div style="font-size:11px;color:var(--mu);margin-top:8px;font-family:DM Mono,monospace">Showing 200 of '+MD.length+' rows</div>':'')
+      +'<thead><tr>'+showH.map(function(h){return '<th>'+h+'</th>';}).join('')+(MH.length>12?'<th>\u22ef</th>':'')+'</tr></thead>'
+      +'<tbody>'+MD.slice(0,200).map(function(r){return '<tr>'+showH.map(function(h){return '<td class="mu2" style="max-width:140px;overflow:hidden;text-overflow:ellipsis" title="'+(r[h]||'')+'">'+(r[h]||'—')+'</td>';}).join('')+(MH.length>12?'<td class="mu2">\u2026</td>':'')+'</tr>';}).join('')+'</tbody>'
+      +'</table></div></div>'
+      +(MD.length>200?'<div style="font-size:11px;color:var(--mu);margin-top:8px;font-family:DM Mono,monospace">Showing 200 of '+MD.length+'</div>':'')
       +'</div>';
   } else {
-    document.getElementById('dd-m').innerHTML='<div style="padding:24px;color:var(--mu);font-size:13px;font-family:DM Mono,monospace;line-height:2">'
-      +'Master_Sheet not loaded.<br>Publish Master_Sheet tab → paste URL into CFG.master in index.html'
-      +'</div>';
+    document.getElementById('dd-m').innerHTML='<div style="padding:24px;color:var(--mu);font-size:13px;font-family:DM Mono,monospace;line-height:2">Master_Sheet not loaded.<br>Publish tab \u2192 paste CSV URL into CFG.master in index.html</div>';
   }
 }
 
-// ── Drill-down table helper ─────────────────────────────────
-function ddTable(rows,cols){
-  return '<div class="tw" style="margin-top:8px"><div class="tscr"><table>'
-    +'<thead><tr>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('')+'</tr></thead>'
-    +'<tbody>'+rows.map(function(r){return '<tr onclick="openEmpCard(r)">'+cols.map(function(c){
-      if(c==='Photo')     return '<td>'+pImg(r[C.photo],r[C.name])+'</td>';
-      if(c==='Name')      return '<td style="font-weight:500">'+(r[C.name]||'—')+'</td>';
-      if(c==='Emp ID')    return '<td class="mu2">'+(r[C.empId]||'—')+'</td>';
-      if(c==='Email')     return '<td style="font-size:11px;color:var(--ac)">'+(r[C.email]||'—')+'</td>';
-      if(c==='CTC')       return '<td class="ctcv">'+fmt(r[C.ctc])+'</td>';
-      if(c==='Rating')    {var v=rating(r);return '<td><div class="rb rb'+(v||0)+'">'+(v||'—')+'</div></td>';}
-      if(c==='W.Score')   {var s=weightedScore(r);var col=s>=4?'#00e5a0':s>=3?'#f7c948':s>=2?'#ff6b35':'#ff4757';return '<td><b style="color:'+col+';font-family:DM Mono,monospace">'+(s>0?s.toFixed(2):'—')+'</b></td>';}
-      if(c==='Avg Mins')  return '<td class="mu2">'+(r[C.avgMins]||'—')+'</td>';
-      if(c==='Leaves')    {var v=N(r[C.leaves]);return '<td class="'+(v>=20?'lvhi':'mu2')+'">'+(r[C.leaves]||'0')+(v>=20?' ⚠':'')+'</td>';}
-      if(c==='Lv.Rtg')   return '<td class="mu2">'+(r[C.leaveRating]||'—')+'</td>';
-      if(c==='Variable')  return '<td class="mu2">'+fmt(r[C.variable])+'</td>';
-      if(c==='DOJ')       return '<td class="mu2">'+(r[C.doj]||'—')+'</td>';
-      return '<td class="mu2">—</td>';
-    }).join('')+'</tr>';}).join('')
-    +'</tbody></table></div></div>';
-}
-
-// Click row in drill-down → open employee card
-function openEmpCard(r){
-  goPg('cards', document.querySelector('.sbi[onclick*="cards"]'));
-  var idx=empF.findIndex(function(e){return e[C.empId]===r[C.empId];});
-  if(idx>=0) selE(idx);
-}
-
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 // NAVIGATION
-// ════════════════════════════════════════════════════════════
-function goPg(key,el){ document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on');}); document.querySelectorAll('.sbi').forEach(function(i){i.classList.remove('on');}); document.getElementById('pg-'+key).classList.add('on'); if(el) el.classList.add('on'); }
-function ddSw(id){ document.querySelectorAll('.ddp').forEach(function(p){p.classList.remove('on');}); document.getElementById(id).classList.add('on'); }
-function ddTab(btn,id){ document.querySelectorAll('.ddt').forEach(function(t){t.classList.remove('on');}); if(btn) btn.classList.add('on'); else { var tabs=document.querySelectorAll('.ddt'); tabs.forEach(function(t){if(t.getAttribute('onclick')&&t.getAttribute('onclick').includes("'"+id+"'")){t.classList.add('on');}}); } ddSw(id); }
-function expCSV(){ if(!tbF.length) return; var rows=[AH.join(',')].concat(tbF.map(function(r){return AH.map(function(h){return '"'+(r[h]||'').replace(/"/g,'""')+'"';}).join(',');})); var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'})); a.download='spyne_delivery_appraisal.csv'; a.click(); }
+// ═══════════════════════════════════════════════════
+function goPg(key,el){
+  document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on');});
+  document.querySelectorAll('.sbi').forEach(function(i){i.classList.remove('on');});
+  document.getElementById('pg-'+key).classList.add('on');
+  if(el) el.classList.add('on');
+}
+function ddSw(id){
+  document.querySelectorAll('.ddp').forEach(function(p){p.classList.remove('on');});
+  document.getElementById(id).classList.add('on');
+}
+function ddTab(btn,id){
+  document.querySelectorAll('.ddt').forEach(function(t){t.classList.remove('on');});
+  if(btn) btn.classList.add('on');
+  else { document.querySelectorAll('.ddt').forEach(function(t){if((t.getAttribute('onclick')||'').includes("'"+id+"'"))t.classList.add('on');}); }
+  ddSw(id);
+}
 
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 // START
-// ════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
 init();
 </script>
 </body>
