@@ -369,7 +369,7 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 // ════════════════════════════════════════════════════════════
 var CFG = {
   // Final_Appraisal published CSV (gid=537777663)
-  appraisal: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTptLnEPb1xL3D9O5aF2zQeBd2moUhTlmOu_KzvELMpiLN3n0TFOKEEbqRTmXIBRe0DhInjJD1xRxnU/pub?output=csv',
+  appraisal: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTptLnEPb1xL3D9O5aF2zQeBd2moUhTlmOu_KzvELMpiLN3n0TFOKEEbqRTmXIBRe0DhInjJD1xRxnU/pub?output=csv&gid=537777663',
   // Master_Sheet — paste published CSV URL here once you publish it
   master: ''
 };
@@ -380,18 +380,25 @@ var CFG = {
 var AD=[], MD=[], AH=[], MH=[];
 // Column map for Final_Appraisal — exact header names from sheet
 var C = {
-  email:   'Email_ID',
-  empId:   'Emp_ID',
-  photo:   'Photo link',
-  name:    'Name',
-  ctc:     'Current CTC',
-  joiningDate: 'Joining Date',
-  endDate: 'End Date',
-  factor:  'Factor',
-  elig:    'Eligibility',
-  avgMins: 'Avg Mins',
-  rating:  'AVG Rating',
-  leaves:  'Leaves'
+  email:      'Email_ID',
+  empId:      'Emp_ID',
+  photo:      'Photo link',
+  name:       'Name',
+  ctc:        'Current CTC',
+  ctcM:       'Current CTC(M)',
+  doj:        'DOJ',
+  variable:   'Variable',
+  prorata:    'Prorata',
+  avgMins:    'Avg Mins',
+  rating:     'AVG Rating',
+  leaves:     'Leaves',
+  leaveRating:'Leave Rating',
+  ot:         'OT',
+  // These will be auto-detected from actual headers if names differ slightly
+  factor:     '',   // will be detected: Factor or Prorata
+  elig:       '',   // will be detected: Eligibility or criteria-based
+  newCtc:     '',   // will be detected: New CTC / Revised CTC
+  hike:       ''    // will be detected: Hike % / Increment
 };
 // Master_Sheet column map — will be auto-detected
 var MC = {};
@@ -405,7 +412,7 @@ var empF=[], empIdx=0;
 function N(v){ return parseFloat((v||'').toString().replace(/,/g,''))||0; }
 function fmt(v){ var n=N(v); return n?'₹'+n.toLocaleString('en-IN'):'—'; }
 function pct(a,b){ return b?((a/b)*100).toFixed(1)+'%':'—'; }
-function elig(r){ return (r[C.elig]||'').toUpperCase()==='Y'; }
+function elig(r){ if(!C.elig) return false; var v=(r[C.elig]||'').trim().toUpperCase(); return v==='Y'||v==='YES'||v==='TRUE'||v==='1'; }
 function rating(r){ return Math.round(N(r[C.rating])); }
 
 function pImg(u,n){
@@ -505,6 +512,10 @@ function init(){
         document.getElementById('lastUpd').textContent=now.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})+' '+now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
         document.getElementById('sb-lv').textContent='Live · Google Sheets';
         document.getElementById('sb-rc').textContent=AD.length+' in Final_Appraisal'+(MD.length?' · '+MD.length+' in Master':'');
+        // Show detected column map in console for debugging
+        console.log('=== COLUMN MAP ===', C);
+        console.log('=== SAMPLE ROW ===', AD[0]);
+        console.log('=== ALL HEADERS ===', AH);
         document.getElementById('sb-tot').textContent=AD.length;
         document.getElementById('sb-hl').textContent=AD.filter(function(r){return N(r[C.leaves])>=20;}).length;
         setP(100,'Ready');
@@ -514,21 +525,54 @@ function init(){
     .catch(function(e){ showErr('Could not load data: '+e.message); });
 }
 
-// Validate/fallback column detection for Final_Appraisal
+// Auto-detect ALL columns from actual headers in Final_Appraisal
 function validateCols(){
   if(!AH.length) return;
-  // If exact col names not found, try auto-detect
-  function has(col){ return AH.indexOf(col)>=0; }
-  if(!has(C.email)){    var f=AH.find(function(h){return /email/i.test(h);}); if(f) C.email=f; }
-  if(!has(C.empId)){    var f=AH.find(function(h){return /emp.?id/i.test(h);}); if(f) C.empId=f; }
-  if(!has(C.photo)){    var f=AH.find(function(h){return /photo/i.test(h);}); if(f) C.photo=f; }
-  if(!has(C.name)){     var f=AH.find(function(h){return /^name$/i.test(h.trim());}); if(f) C.name=f; }
-  if(!has(C.ctc)){      var f=AH.find(function(h){return /current.*ctc|ctc/i.test(h);}); if(f) C.ctc=f; }
-  if(!has(C.factor)){   var f=AH.find(function(h){return /^factor$/i.test(h.trim());}); if(f) C.factor=f; }
-  if(!has(C.elig)){     var f=AH.find(function(h){return /eligib/i.test(h);}); if(f) C.elig=f; }
-  if(!has(C.avgMins)){  var f=AH.find(function(h){return /avg.*min|min.*avg/i.test(h);}); if(f) C.avgMins=f; }
-  if(!has(C.rating)){   var f=AH.find(function(h){return /avg.*rat|rat.*avg/i.test(h);}); if(f) C.rating=f; }
-  if(!has(C.leaves)){   var f=AH.find(function(h){return /^leaves?$/i.test(h.trim());}); if(f) C.leaves=f; }
+  // Log actual headers to console for debugging
+  console.log('Final_Appraisal headers:', AH);
+  
+  function find(regex){ return AH.find(function(h){return regex.test(h.trim());})||''; }
+  
+  // Core identification cols
+  if(!AH.includes(C.email))      C.email      = find(/email/i);
+  if(!AH.includes(C.empId))      C.empId      = find(/emp.?id/i);
+  if(!AH.includes(C.photo))      C.photo      = find(/photo/i);
+  if(!AH.includes(C.name))       C.name       = find(/^name$/i);
+  
+  // CTC cols
+  if(!AH.includes(C.ctc))        C.ctc        = find(/current.?ctc/i) || find(/^ctc$/i);
+  if(!AH.includes(C.ctcM))       C.ctcM       = find(/current.?ctc.*m|ctc.*month/i);
+  
+  // Date cols
+  if(!AH.includes(C.doj))        C.doj        = find(/^doj$/i) || find(/joining.*date|date.*joining/i);
+  
+  // Performance cols — try multiple possible names
+  if(!AH.includes(C.avgMins))    C.avgMins    = find(/avg.*min/i) || find(/min.*avg/i);
+  if(!AH.includes(C.rating))     C.rating     = find(/avg.*rat/i) || find(/rat.*avg/i);
+  if(!AH.includes(C.leaves))     C.leaves     = find(/^leaves?$/i);
+  if(!AH.includes(C.leaveRating))C.leaveRating= find(/leave.*rat/i);
+  if(!AH.includes(C.ot))         C.ot         = find(/^ot$/i);
+  
+  // Factor — could be "Factor", "Prorata", "Increment Factor"
+  if(!AH.includes(C.factor)||!C.factor) 
+    C.factor = find(/^factor$/i) || find(/prorata/i) || find(/increment.*factor/i);
+  
+  // Variable pay
+  if(!AH.includes(C.variable)||!C.variable)
+    C.variable = find(/^variable$/i) || find(/variable.*pay/i);
+  
+  // Eligibility — could be "Eligibility", "Eligible", criteria column
+  if(!AH.includes(C.elig)||!C.elig)
+    C.elig = find(/eligib/i) || find(/^eligible$/i);
+  
+  // New/revised CTC after hike
+  if(!C.newCtc) C.newCtc = find(/new.?ctc/i) || find(/revised.?ctc/i) || find(/final.?ctc/i);
+  if(!C.hike)   C.hike   = find(/hike/i) || find(/increment.*%|%.*increment/i);
+  
+  // Anything else useful
+  if(!C.endDate) C.endDate = find(/end.?date/i) || find(/last.?day/i);
+  
+  console.log('Mapped columns:', JSON.stringify(C));
 }
 
 function refreshData(){ document.getElementById('splash').classList.remove('out'); document.getElementById('app').style.display='none'; AD=[]; MD=[]; setTimeout(init,300); }
@@ -551,7 +595,7 @@ function buildAll(){
 // ════════════════════════════════════════════════════════════
 function buildKPIs(){
   var d=AD, t=d.length;
-  var el=d.filter(elig).length;
+  var el=C.elig?d.filter(elig).length:0;
   var rs=d.map(function(r){return N(r[C.rating]);}).filter(function(v){return v>0;});
   var avR=rs.length?(rs.reduce(function(a,b){return a+b;},0)/rs.length).toFixed(1):'—';
   var fs=d.map(function(r){return N(r[C.factor]);}).filter(function(v){return v>0;});
@@ -573,7 +617,7 @@ function buildKPIs(){
 // CHART DATA
 // ════════════════════════════════════════════════════════════
 function rR(){ var rc={1:0,2:0,3:0,4:0,5:0},col={5:'#00e5a0',4:'#00d4ff',3:'#f7c948',2:'#ff6b35',1:'#ff4757'}; AD.forEach(function(r){var v=rating(r);if(v>=1&&v<=5)rc[v]++;}); return [5,4,3,2,1].map(function(i){return{l:'★ '+i,v:rc[i],c:col[i]};}); }
-function fR(){ var fb={'<0.8':0,'0.8-1.0':0,'1.0-1.2':0,'1.2-1.4':0,'1.4+':0}; AD.forEach(function(r){var v=N(r[C.factor]);if(v<0.8)fb['<0.8']++;else if(v<1.0)fb['0.8-1.0']++;else if(v<1.2)fb['1.0-1.2']++;else if(v<1.4)fb['1.2-1.4']++;else fb['1.4+']++;}); return Object.keys(fb).map(function(l){return{l:l,v:fb[l],c:'#00d4ff'};}); }
+function fR(){ var fb={'<0.8':0,'0.8-1.0':0,'1.0-1.2':0,'1.2-1.4':0,'1.4+':0}; var fKey=C.factor||C.prorata; AD.forEach(function(r){var v=N(r[fKey]);if(v===0)return;if(v<0.8)fb['<0.8']++;else if(v<1.0)fb['0.8-1.0']++;else if(v<1.2)fb['1.0-1.2']++;else if(v<1.4)fb['1.2-1.4']++;else fb['1.4+']++;}); return Object.keys(fb).map(function(l){return{l:l,v:fb[l],c:'#00d4ff'};}); }
 function eS(){ var yn=AD.filter(elig).length; return [{l:'Eligible (Y)',v:yn,h:'#00e5a0'},{l:'Not Eligible (N)',v:AD.length-yn,h:'#ff4757'}]; }
 function lR(){ var lb={'0-5':0,'6-10':0,'11-15':0,'16-20':0,'20+':0}; AD.forEach(function(r){var v=N(r[C.leaves]);if(v<=5)lb['0-5']++;else if(v<=10)lb['6-10']++;else if(v<=15)lb['11-15']++;else if(v<=20)lb['16-20']++;else lb['20+']++;}); return Object.keys(lb).map(function(l){return{l:l,v:lb[l],c:'#ff4757'};}); }
 function mR(){ var mb={'<400':0,'400-450':0,'450-480':0,'480-500':0,'500+':0}; AD.forEach(function(r){var v=N(r[C.avgMins]);if(v<400)mb['<400']++;else if(v<450)mb['400-450']++;else if(v<480)mb['450-480']++;else if(v<500)mb['480-500']++;else mb['500+']++;}); return Object.keys(mb).map(function(l){return{l:l,v:mb[l],c:'#c084fc'};}); }
@@ -589,16 +633,21 @@ function buildDonut(sid,lid,segs){ var svg=document.getElementById(sid); if(!svg
 // TABLE COLUMNS — mapped to exact Final_Appraisal headers
 // ════════════════════════════════════════════════════════════
 var TC=[
-  {l:'Photo',   r:function(r){return '<td>'+pImg(r[C.photo],r[C.name])+'</td>';}},
-  {l:'Name',    k:function(){return C.name;},    r:function(r){return '<td style="font-weight:500;min-width:120px">'+(r[C.name]||'—')+'</td>';}},
-  {l:'Emp ID',  k:function(){return C.empId;},   r:function(r){return '<td class="mu2">'+(r[C.empId]||'—')+'</td>';}},
-  {l:'Email',   r:function(r){return '<td style="font-size:11px;color:var(--ac);font-family:DM Mono,monospace;min-width:150px">'+(r[C.email]||'—')+'</td>';}},
-  {l:'Current CTC', k:function(){return C.ctc;}, r:function(r){return '<td class="ctcv">'+fmt(r[C.ctc])+'</td>';}},
-  {l:'Factor',  k:function(){return C.factor;},  r:function(r){var v=N(r[C.factor]);return '<td><div class="fbar"><span style="font-size:11px;min-width:26px;font-family:DM Mono,monospace">'+(v||'—')+'</span><div class="ftr"><div class="ffl" style="width:'+Math.min((v/1.5)*100,100)+'%"></div></div></div></td>';}},
-  {l:'Eligibility', k:function(){return C.elig;}, r:function(r){var y=elig(r);return '<td><span class="eb '+(y?'ey':'en')+'">'+(y?'✓ Yes':'✗ No')+'</span></td>';}},
-  {l:'Avg Mins',k:function(){return C.avgMins;}, r:function(r){return '<td class="mu2">'+(r[C.avgMins]||'—')+'</td>';}},
-  {l:'AVG Rating', k:function(){return C.rating;}, r:function(r){var v=rating(r);return '<td><div class="rb rb'+(v||0)+'">'+(v||'—')+'</div></td>';}},
-  {l:'Leaves',  k:function(){return C.leaves;},  r:function(r){var v=N(r[C.leaves]);return '<td class="'+(v>=20?'lvhi':'mu2')+'">'+(r[C.leaves]||'0')+(v>=20?' ⚠':'')+'</td>';}}
+  {l:'Photo',       r:function(r){return '<td>'+pImg(r[C.photo],r[C.name])+'</td>';}},
+  {l:'Name',        k:function(){return C.name;},       r:function(r){return '<td style="font-weight:500;min-width:130px">'+(r[C.name]||'—')+'</td>';}},
+  {l:'Emp ID',      k:function(){return C.empId;},      r:function(r){return '<td class="mu2">'+(r[C.empId]||'—')+'</td>';}},
+  {l:'Email',       r:function(r){return '<td style="font-size:11px;color:var(--ac);font-family:DM Mono,monospace;min-width:160px">'+(r[C.email]||'—')+'</td>';}},
+  {l:'Current CTC', k:function(){return C.ctc;},        r:function(r){return '<td class="ctcv">'+fmt(r[C.ctc])+'</td>';}},
+  {l:'CTC(M)',      k:function(){return C.ctcM;},       r:function(r){return '<td class="mu2">'+fmt(r[C.ctcM])+'</td>';}},
+  {l:'DOJ',         k:function(){return C.doj;},        r:function(r){return '<td class="mu2">'+(r[C.doj]||'—')+'</td>';}},
+  {l:'Variable',    k:function(){return C.variable;},   r:function(r){return '<td class="mu2">'+(r[C.variable]?fmt(r[C.variable]):'—')+'</td>';}},
+  {l:'Factor',      k:function(){return C.factor;},     r:function(r){var v=N(r[C.factor]);return '<td><div class="fbar"><span style="font-size:11px;min-width:26px;font-family:DM Mono,monospace">'+(v||'—')+'</span><div class="ftr"><div class="ffl" style="width:'+Math.min((v/1.5)*100,100)+'%"></div></div></div></td>';}},
+  {l:'Eligibility', k:function(){return C.elig;},       r:function(r){if(!C.elig)return '<td class="mu2">—</td>';var y=elig(r);return '<td><span class="eb '+(y?'ey':'en')+'">'+(y?'✓ Yes':'✗ No')+'</span></td>';}},
+  {l:'Avg Mins',    k:function(){return C.avgMins;},    r:function(r){return '<td class="mu2">'+(r[C.avgMins]||'—')+'</td>';}},
+  {l:'AVG Rating',  k:function(){return C.rating;},     r:function(r){var v=rating(r);return '<td><div class="rb rb'+(v||0)+'">'+(v||'—')+'</div></td>';}},
+  {l:'Leaves',      k:function(){return C.leaves;},     r:function(r){var v=N(r[C.leaves]);return '<td class="'+(v>=20?'lvhi':'mu2')+'">'+(r[C.leaves]||'0')+(v>=20?' ⚠':'')+'</td>';}},
+  {l:'Leave Rtg',   k:function(){return C.leaveRating;},r:function(r){return '<td class="mu2">'+(r[C.leaveRating]||'—')+'</td>';}},
+  {l:'OT',          k:function(){return C.ot;},         r:function(r){return '<td class="mu2">'+(r[C.ot]||'—')+'</td>';}}
 ];
 function buildHeads(){ var h=TC.map(function(c,i){return '<th onclick="tbSrt('+i+')" data-i="'+i+'">'+c.l+' <span>↕</span></th>';}).join(''); document.getElementById('tb-th').innerHTML=h; document.getElementById('ov-th').innerHTML=TC.map(function(c,i){return '<th onclick="ovSrt('+i+')">'+(c.l)+' <span>↕</span></th>';}).join(''); }
 function buildNameFilter(){ var ns={}; AD.forEach(function(r){var n=r[C.name];if(n)ns[n]=1;}); document.getElementById('tb-n').innerHTML='<option value="">All Names</option>'+Object.keys(ns).sort().map(function(n){return '<option value="'+n+'">'+n+'</option>';}).join(''); }
