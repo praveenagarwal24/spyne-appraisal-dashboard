@@ -418,26 +418,40 @@ function ratingFmt(r){ var v=finalRating(r); return v>0?v.toFixed(2):'—'; }
 function ratingInt(r){ return finalRating(r); } // raw float for sorting
 
 // Drive photo: use /uc?export=view&id= which is the most reliable public thumbnail
-function drivePhoto(url){
-  if(!url||url.trim()==='') return '';
-  var m = url.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
-  if(!m) m = url.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
-  if(m) return 'https://drive.google.com/uc?export=view&id='+m[1];
-  if(url.startsWith('http')) return url;
-  return '';
+function driveId(url){
+  if(!url||!url.trim()) return '';
+  var m=url.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
+  if(!m) m=url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
+  return m?m[1]:'';
 }
 
+// 3-tier fallback: lh3 CDN → drive thumbnail → initials
 function pImg(url,name){
   var i=(name||'?').charAt(0).toUpperCase();
-  var src=drivePhoto(url);
-  if(src) return '<img style="width:28px;height:28px;border-radius:7px;object-fit:cover;border:1px solid var(--b1);background:var(--s2)" src="'+src+'" referrerpolicy="no-referrer" onerror="this.outerHTML=\'<div class=inav>'+i+'</div>\'" alt="">';
-  return '<div class="inav">'+i+'</div>';
+  var id=driveId(url);
+  if(!id){
+    if(url&&url.startsWith('http')) return '<img style="width:28px;height:28px;border-radius:7px;object-fit:cover;border:1px solid var(--b1);background:var(--s2)" src="'+url+'" onerror="this.outerHTML='<div class=inav>'+i+'</div>'" alt="">';
+    return '<div class="inav">'+i+'</div>';
+  }
+  var t1='https://lh3.googleusercontent.com/d/'+id;
+  var t2='https://drive.google.com/thumbnail?id='+id+'&sz=w100';
+  return '<img style="width:28px;height:28px;border-radius:7px;object-fit:cover;border:1px solid var(--b1);background:var(--s2)"'
+    +' src="'+t1+'"'
+    +' onerror="if(this.src.indexOf('lh3')>=0){this.src=''+t2+'';}else{this.outerHTML='<div class=inav>'+i+'</div>';}" alt="">';
 }
+
 function pImgLg(url,name){
   var i=(name||'?').charAt(0).toUpperCase();
-  var src=drivePhoto(url);
-  if(src) return '<img class="eph" src="'+src+'" referrerpolicy="no-referrer" onerror="this.outerHTML=\'<div class=eini>'+i+'</div>\'" alt="">';
-  return '<div class="eini">'+i+'</div>';
+  var id=driveId(url);
+  if(!id){
+    if(url&&url.startsWith('http')) return '<img class="eph" src="'+url+'" onerror="this.outerHTML='<div class=eini>'+i+'</div>'" alt="">';
+    return '<div class="eini">'+i+'</div>';
+  }
+  var t1='https://lh3.googleusercontent.com/d/'+id;
+  var t2='https://drive.google.com/thumbnail?id='+id+'&sz=w300';
+  return '<img class="eph"'
+    +' src="'+t1+'"'
+    +' onerror="if(this.src.indexOf('lh3')>=0){this.src=''+t2+'';}else{this.outerHTML='<div class=eini>'+i+'</div>';}" alt="">';
 }
 
 function setP(p,m){ document.getElementById('spFill').style.width=p+'%'; if(m) document.getElementById('spMsg').textContent=m; }
@@ -807,9 +821,7 @@ function renderEC(r,idx,tot){
   var rtC=rt>=4?'#00e5a0':rt>=3?'#f7c948':rt>=2?'#ff6b35':'#ff4757';
   var mr=getMaster(r[C.empId]);
 
-  // Photo
-  var photoSrc=drivePhoto(r[C.photo]||'');
-
+  // Photo rendered via pImgLg with fallback
   // New Annual CTC = round(newCtcM)*12
   var newCtcMval=C.newCtcM?N(r[C.newCtcM]):0;
   var newAnnual=newCtcMval?Math.round(newCtcMval)*12:0;
@@ -846,20 +858,7 @@ function renderEC(r,idx,tot){
     +'<div class="enav"><button class="nb" onclick="navE(-1)">\u2190 Prev</button><span class="nc">'+(idx+1)+' of '+tot+'</span><button class="nb" onclick="navE(1)">Next \u2192</button></div>'
     // Hero
     +'<div class="ehero"><div class="ephW">'
-      +(photoSrc
-        ?'<img class="eph" src="'+photoSrc+'" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" alt=""><div class="eini" style="display:none">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>'
-        :'<div class="eini">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>')
-    +'</div>'
-    +'<div style="flex:1;min-width:0">'
-      +'<div class="ehN">'+(r[C.name]||'—')+'</div>'
-      +'<div class="ehID">'+(r[C.empId]||'—')+(mr&&mr[MC.desig]?' \u00b7 '+mr[MC.desig]:'')+'</div>'
-      +'<div class="ehE">'+(r[C.email]||'—')+'</div>'
-      +'<div class="ehtg">'
-        +'<span class="tg tgR">\u2605 '+rtFmt+'</span>'
-        +(mr&&mr[MC.dept]?'<span class="tg tgD">'+mr[MC.dept]+'</span>':'<span class="tg tgD">Delivery</span>')
-        +(mr&&mr[MC.team]?'<span class="tg tgP">'+mr[MC.team]+'</span>':'')
-      +'</div>'
-    +'</div></div>'
+      +pImgLg(r[C.photo],r[C.name])+'</div></div>'
 
     // Core metrics
     +'<div class="emg">'
