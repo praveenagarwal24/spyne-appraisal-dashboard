@@ -38,7 +38,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .layout{display:flex;min-height:100vh;}
 
 /* SIDEBAR */
-.sb{width:var(--sw);flex-shrink:0;background:var(--s1);border-right:1px solid var(--b1);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;}
+.sb{width:var(--sw);flex-shrink:0;background:var(--s1);border-right:1px solid var(--b1);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;overflow:hidden;}
 .sb-top{padding:18px 16px 14px;border-bottom:1px solid var(--b1);}
 .sb-lr{display:flex;align-items:center;gap:9px;margin-bottom:3px;}
 .sb-brand{font-weight:600;font-size:14px;color:var(--tx);}
@@ -76,12 +76,12 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .kpi{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s;}
 .kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.4);}
 .kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
-.k1::after{background:linear-gradient(90deg,var(--ac),transparent);} .k2::after{background:linear-gradient(90deg,var(--ac4),transparent);}
+.k1::after{background:linear-gradient(90deg,var(--ac),transparent);} .k1b::after{background:linear-gradient(90deg,var(--ac),transparent);} .k2::after{background:linear-gradient(90deg,var(--ac4),transparent);}
 .k3::after{background:linear-gradient(90deg,var(--ac2),transparent);} .k4::after{background:linear-gradient(90deg,var(--ac2),transparent);}
 .k5::after{background:linear-gradient(90deg,var(--red),transparent);} .k6::after{background:linear-gradient(90deg,var(--ac5),transparent);}
 .kl{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:var(--mu);margin-bottom:7px;font-family:'DM Mono',monospace;}
 .kv{font-weight:700;font-size:26px;line-height:1;margin-bottom:3px;}
-.k1 .kv{color:var(--ac);} .k2 .kv{color:var(--ac4);} .k3 .kv{color:var(--ac2);}
+.k1 .kv{color:var(--ac);} .k1b .kv{color:var(--ac);} .k2 .kv{color:var(--ac4);} .k3 .kv{color:var(--ac2);}
 .k4 .kv{color:var(--ac2);} .k5 .kv{color:var(--red);} .k6 .kv{color:var(--ac5);}
 .ks{font-size:10px;color:var(--mu);}
 
@@ -221,6 +221,19 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 
 /* WEIGHTED SCORE */
 .ws-badge{display:inline-flex;align-items:center;justify-content:center;min-width:44px;height:24px;padding:0 8px;border-radius:6px;font-weight:700;font-size:12px;font-family:'DM Mono',monospace;}
+
+/* SIDEBAR COLLAPSE */
+.sb{transition:transform .25s cubic-bezier(.4,0,.2,1),width .25s;}
+.sb.collapsed{transform:translateX(calc(-1 * var(--sw)));width:0;min-width:0;}
+.main{transition:margin-left .25s cubic-bezier(.4,0,.2,1);}
+.main.expanded{margin-left:0;}
+.sb-toggle{position:fixed;top:50%;left:0;transform:translateY(-50%);z-index:200;
+  width:18px;height:52px;background:var(--s2);border:1px solid var(--b1);
+  border-left:none;border-radius:0 8px 8px 0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--ac);font-size:12px;transition:left .25s,background .15s;}
+.sb-toggle:hover{background:var(--b2);}
+.sb-toggle.sb-open{left:var(--sw);}
 </style>
 </head>
 <body>
@@ -247,6 +260,7 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 </div>
 
 <!-- APP -->
+<button class="sb-toggle sb-open" id="sbToggle" onclick="toggleSidebar()" title="Toggle sidebar">&#8249;</button>
 <div id="app">
 <div class="layout">
   <aside class="sb">
@@ -285,10 +299,8 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
         <div class="ph-r">Last refreshed<br><span id="lastUpd" style="color:var(--ac3)">—</span></div>
       </div>
       <div class="kg" id="kgrid"></div>
-      <div class="cg">
-        <div class="cc"><div class="cch"><div class="cct">Rating Distribution</div><span class="ccb">COUNT</span></div><div id="ch-ov-r"></div></div>
-        <div class="cc"><div class="cch"><div class="cct">Rating Split</div><span class="ccb">COUNT</span></div><div class="drow"><svg id="ch-ov-d" width="100" height="100" viewBox="0 0 100 100"></svg><div class="dleg" id="ch-ov-dl"></div></div></div>
-        <div class="cc"><div class="cch"><div class="cct">Factor Range</div><span class="ccb">MULTIPLIER</span></div><div id="ch-ov-f"></div></div>
+      <div style="margin-bottom:22px">
+        <div class="cc"><div class="cch"><div class="cct">Rating Distribution</div><span class="ccb" id="ov-chart-filter-label">CLICK BAR TO FILTER</span></div><div id="ch-ov-r"></div></div>
       </div>
       <div class="ctrl">
         <div class="sbox"><input id="ov-s" placeholder="Search name / Emp ID…" oninput="ovSrch()"></div>
@@ -563,7 +575,7 @@ function init(){
         document.getElementById('sb-lv').textContent='Live · Google Sheets';
         document.getElementById('sb-rc').textContent=AD.length+' employees'+(MD.length?' · '+MD.length+' master':'');
         document.getElementById('sb-tot').textContent=AD.length;
-        document.getElementById('sb-hl').textContent=AD.filter(function(r){return N(r[C.leaves])>=20;}).length;
+        var _lv=AD.map(function(r){return N(r[C.leaves]);});document.getElementById('sb-hl').textContent=_lv.length?Math.round(_lv.reduce(function(a,b){return a+b;},0)/_lv.length):0;
         setP(100,'');
         setTimeout(function(){ document.getElementById('splash').classList.add('out'); document.getElementById('app').style.display='block'; },400);
       },120);
@@ -577,7 +589,7 @@ function refreshData(){ document.getElementById('splash').classList.remove('out'
 // ═══════════════════════════════════════════════════
 function buildAll(){
   buildKPIs();
-  buildBar('ch-ov-r',ratingRows()); buildBar('ch-ov-f',factorRows()); buildDonut('ch-ov-d','ch-ov-dl',ratingDonut());
+  buildClickableRatingBar('ch-ov-r',ratingRows()); buildBar('ch-ov-f',factorRows()); buildDonut('ch-ov-d','ch-ov-dl',ratingDonut());
   buildBar('ch-an-r',ratingRows()); buildBar('ch-an-f',factorRows()); buildDonut('ch-an-d','ch-an-dl',ratingDonut());
   buildBar('ch-an-l',leavesRows()); buildBar('ch-an-m',minsRows()); buildBar('ch-an-c',ctcRows());
   buildHeads(); buildNameFilter();
@@ -592,17 +604,21 @@ function buildKPIs(){
   var d=AD, t=d.length;
   var rs=d.map(function(r){return finalRating(r);}).filter(function(v){return v>0;});
   var avR=rs.length?(rs.reduce(function(a,b){return a+b;},0)/rs.length).toFixed(2):'—';
-  var hl=d.filter(function(r){return N(r[C.leaves])>=20;}).length;
+  var lvArr=d.map(function(r){return N(r[C.leaves]);}).filter(function(v){return v>=0;});
+  var hl=lvArr.length?Math.round(lvArr.reduce(function(a,b){return a+b;},0)/lvArr.length):0;
   var ms=d.map(function(r){return N(r[C.avgMins]);}).filter(function(v){return v>0;});
   var avM=ms.length?Math.round(ms.reduce(function(a,b){return a+b;},0)/ms.length):'—';
   var ctcArr=d.map(function(r){return N(r[C.ctc]);}).filter(function(v){return v>0;});
   var avCTC=ctcArr.length?fmt(Math.round(ctcArr.reduce(function(a,b){return a+b;},0)/ctcArr.length)):'—';
+  var ctcMArr=d.map(function(r){return N(r[C.ctcM]);}).filter(function(v){return v>0;});
+  var avCTCM=ctcMArr.length?fmt(Math.round(ctcMArr.reduce(function(a,b){return a+b;},0)/ctcMArr.length)):'—';
   document.getElementById('kgrid').innerHTML=[
     {c:'k1',l:'Total Employees',v:t,s:'Final_Appraisal'},
     {c:'k2',l:'Avg Final Rating',v:avR,s:'Column R rating'},
     {c:'k4',l:'Avg Mins',v:avM,s:'Productive minutes'},
-    {c:'k5',l:'High Leaves',v:hl,s:'\u2265 20 days'},
-    {c:'k6',l:'Avg CTC',v:avCTC,s:'Annual CTC avg'}
+    {c:'k5',l:'Avg Leaves',v:hl,s:'Days per employee'},
+    {c:'k6',l:'Avg CTC (Annual)',v:avCTC,s:'Annual avg'},
+    {c:'k1b',l:'Avg CTC (Monthly)',v:avCTCM,s:'Monthly avg'}
   ].map(function(k,i){return '<div class="kpi '+k.c+'" style="animation-delay:'+(i*.07)+'s"><div class="kl">'+k.l+'</div><div class="kv">'+k.v+'</div><div class="ks">'+k.s+'</div></div>';}).join('');
 }
 
@@ -646,6 +662,44 @@ function ctcRows(){
 // ═══════════════════════════════════════════════════
 // CHART RENDERERS
 // ═══════════════════════════════════════════════════
+function buildClickableRatingBar(id,rows){
+  var el=document.getElementById(id); if(!el) return;
+  var mx=Math.max.apply(null,rows.map(function(r){return r.v;}))||1;
+  var activeRating=null;
+  el.innerHTML=rows.map(function(r,idx){
+    var starNum=5-idx;
+    return '<div class="brow ov-rbar" data-rating="'+starNum+'" style="cursor:pointer;border-radius:6px;padding:3px 4px;transition:background .15s" onclick="ovFilterByRating('+starNum+')">'
+      +'<div class="blbl">'+r.l+'</div>'
+      +'<div class="btr"><div class="bfl" style="width:'+(r.v/mx*100).toFixed(1)+'%;background:'+r.c+'"></div></div>'
+      +'<div class="bvl">'+r.v+'</div></div>';
+  }).join('');
+  // Add hover styles
+  el.querySelectorAll('.ov-rbar').forEach(function(row){
+    row.addEventListener('mouseenter',function(){this.style.background='rgba(0,212,255,.07)';});
+    row.addEventListener('mouseleave',function(){if(!this.classList.contains('ov-active'))this.style.background='';});
+  });
+}
+var _ovActiveRating=null;
+function ovFilterByRating(star){
+  var sel=document.getElementById('ov-r');
+  if(_ovActiveRating===star){
+    // deselect
+    _ovActiveRating=null;
+    sel.value='';
+    document.getElementById('ov-chart-filter-label').textContent='CLICK BAR TO FILTER';
+    document.querySelectorAll('.ov-rbar').forEach(function(r){r.style.background='';r.classList.remove('ov-active');});
+  } else {
+    _ovActiveRating=star;
+    sel.value=String(star);
+    document.getElementById('ov-chart-filter-label').textContent='\u2605 '+star+' SELECTED — CLICK AGAIN TO CLEAR';
+    document.querySelectorAll('.ov-rbar').forEach(function(r){
+      var active=r.getAttribute('data-rating')===String(star);
+      r.style.background=active?'rgba(0,212,255,.12)':'';
+      r.classList.toggle('ov-active',active);
+    });
+  }
+  ovSrch();
+}
 function buildBar(id,rows){
   var el=document.getElementById(id); if(!el) return;
   var mx=Math.max.apply(null,rows.map(function(r){return r.v;}))||1;
@@ -1080,6 +1134,20 @@ function ddTab(btn,id){
   if(btn) btn.classList.add('on');
   else { document.querySelectorAll('.ddt').forEach(function(t){if((t.getAttribute('onclick')||'').includes("'"+id+"'"))t.classList.add('on');}); }
   ddSw(id);
+}
+
+// ═══════════════════════════════════════════════════
+// SIDEBAR TOGGLE
+// ═══════════════════════════════════════════════════
+var _sbOpen=true;
+function toggleSidebar(){
+  _sbOpen=!_sbOpen;
+  document.querySelector('.sb').classList.toggle('collapsed',!_sbOpen);
+  document.querySelector('.main').classList.toggle('expanded',!_sbOpen);
+  var btn=document.getElementById('sbToggle');
+  btn.classList.toggle('sb-open',_sbOpen);
+  btn.style.left=_sbOpen?'var(--sw)':'0';
+  btn.innerHTML=_sbOpen?'&#8249;':'&#8250;';
 }
 
 // ═══════════════════════════════════════════════════
