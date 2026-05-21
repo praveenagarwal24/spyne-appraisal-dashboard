@@ -842,7 +842,7 @@ function renderEC(r,idx,tot){
     // hero
     +'<div class="ehero"><div class="ephW">'
       +(photoSrc
-        ?'<img class="eph" src="'+photoSrc+'" crossorigin="anonymous" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'" alt=""><div class="eini" style="display:none">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>'
+        ?'<img class="eph" src="'+photoSrc+'" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'" alt=""><div class="eini" style="display:none">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>'
         :'<div class="eini">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>')
       +'</div>'
     +'<div style="flex:1;min-width:0">'
