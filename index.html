@@ -166,9 +166,9 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 
 /* METRIC CARDS with star ratings */
 .emg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px;margin-bottom:18px;}
-.emc{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rs);padding:12px;}
-.emlbl{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu);margin-bottom:4px;font-family:'DM Mono',monospace;}
-.emv{font-weight:700;font-size:16px;color:var(--tx);}
+.emc{background:var(--s2);border:1px solid var(--b1);border-radius:var(--rs);padding:14px;}
+.emlbl{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:var(--tx2);margin-bottom:5px;font-family:'DM Mono',monospace;font-weight:600;}
+.emv{font-weight:700;font-size:19px;color:var(--tx);}
 .em-stars{display:flex;gap:2px;margin-top:5px;align-items:center;}
 
 /* Half-star SVG approach */
@@ -185,15 +185,15 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 .hike-section{margin-top:14px;border:1px solid var(--b1);border-radius:var(--rs);overflow:hidden;}
 .hike-toggle{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;cursor:pointer;background:var(--s2);transition:background .15s;user-select:none;}
 .hike-toggle:hover{background:var(--b2);}
-.hike-toggle-label{font-size:12px;font-weight:600;color:var(--tx2);}
+.hike-toggle-label{font-size:13px;font-weight:600;color:var(--tx);letter-spacing:.2px;}
 .hike-arrow{color:var(--ac);font-size:12px;transition:transform .2s;}
 .hike-body{padding:0 14px 14px;display:none;}
 .hike-body.open{display:block;}
 
 /* REMARK SECTION */
 .remark-section{margin-top:18px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:18px;}
-.remark-title{font-size:11px;font-weight:600;color:var(--tx2);margin-bottom:12px;display:flex;align-items:center;gap:7px;letter-spacing:.5px;text-transform:uppercase;font-family:'DM Mono',monospace;}
-.remark-title::before{content:'';display:block;width:3px;height:12px;background:var(--ac5);border-radius:2px;}
+.remark-title{font-size:11px;font-weight:700;color:var(--tx);margin-bottom:12px;display:flex;align-items:center;gap:7px;letter-spacing:1.5px;text-transform:uppercase;font-family:'DM Mono',monospace;}
+.remark-title::before{content:'';display:block;width:3px;height:14px;background:var(--ac5);border-radius:2px;}
 .remark-textarea{width:100%;background:var(--bg);border:1px solid var(--b1);color:var(--tx);font-family:'DM Sans',sans-serif;font-size:12px;padding:10px 12px;border-radius:var(--rs);outline:none;resize:vertical;min-height:72px;transition:border-color .2s;margin-bottom:12px;}
 .remark-textarea:focus{border-color:var(--ac5);}
 .remark-textarea::placeholder{color:var(--mu);}
@@ -236,9 +236,9 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 .eini{width:100px;height:100px;border-radius:14px;background:linear-gradient(135deg,var(--s2),var(--s3));border:2px solid var(--b1);display:flex;align-items:center;justify-content:center;font-family:'DM Sans',sans-serif;font-weight:700;font-size:36px;color:var(--ac);}
 .esd{position:absolute;bottom:4px;right:4px;width:13px;height:13px;border-radius:50%;border:2px solid var(--s1);}
 .esdY{background:var(--ac3);} .esdN{background:var(--red);}
-.ehN{font-family:'Playfair Display',serif;font-weight:700;font-size:20px;margin-bottom:3px;}
-.ehID{font-size:11px;color:var(--mu);font-family:'DM Mono',monospace;margin-bottom:3px;}
-.ehE{font-size:11px;color:var(--ac);margin-bottom:10px;}
+.ehN{font-family:'Playfair Display',serif;font-weight:700;font-size:22px;margin-bottom:4px;color:var(--tx);}
+.ehID{font-size:12px;color:var(--tx2);font-family:'DM Mono',monospace;margin-bottom:4px;font-weight:500;}
+.ehE{font-size:12px;color:var(--ac);margin-bottom:10px;font-weight:500;}
 .ehtg{display:flex;gap:5px;flex-wrap:wrap;}
 .tg{padding:3px 9px;border-radius:20px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;font-family:'DM Mono',monospace;}
 .tgY{background:rgba(0,229,160,.12);color:#00e5a0;border:1px solid rgba(0,229,160,.25);}
@@ -413,7 +413,7 @@ var CFG = {
   master: '',
   // Google Apps Script Web App URL for saving remarks
   // Deploy a GAS that accepts POST with {empId, status, remark} and writes to sheet
-  remarksWebAppUrl: 'https://script.google.com/macros/s/AKfycbxGCZ-CJO7YaNW8hcFXBZz2IoYwIzaDKAfv-QaoMf_YcnladQOmuZtSEnxkq2duYtbY/exec' // paste your GAS web app URL here
+  remarksWebAppUrl: '' // paste your GAS web app URL here
 };
 
 // ═══════════════════════════════════════════════════
@@ -883,26 +883,30 @@ function expCSV(){
 // ═══════════════════════════════════════════════════
 function buildEL(){
   empF=AD.slice();
-  // Render search + first card
   var det = document.getElementById('edet');
   det.innerHTML = '<div class="ec-search-wrap">'
     + '<input id="ec-search-input" placeholder="Search employee by name or ID…" autocomplete="off" oninput="ecSearchInput()" onfocus="ecShowDrop()" onblur="ecHideDrop()">'
     + '<div class="ec-dropdown" id="ec-dropdown"></div>'
     + '</div>'
-    + '<div id="ec-card-body"></div>';
-  ecPopulateDrop('');
-  if(empF.length) renderEC(empF[0], 0, empF.length);
+    + '<div id="ec-card-body">'
+    + '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:260px;gap:14px;color:var(--mu)">'
+    + '<div style="font-size:42px;opacity:.3">👤</div>'
+    + '<div style="font-size:13px;font-family:DM Mono,monospace;letter-spacing:1px">Search or click an employee to view their card</div>'
+    + '<div style="font-size:11px;opacity:.6">'+empF.length+' employees loaded</div>'
+    + '</div></div>';
+  // Do NOT pre-select any employee
 }
 
 function ecSearchInput(){
   var q = document.getElementById('ec-search-input').value.toLowerCase().trim();
   empF = AD.filter(function(r){
-    return (r[C.name]||'').toLowerCase().includes(q)||(r[C.empId]||'').toLowerCase().includes(q);
+    return (r[C.name]||'').toLowerCase().includes(q)||(r[C.empId]||'').toLowerCase().includes(q)||(r[C.email]||'').toLowerCase().includes(q);
   });
   empIdx=0;
   ecPopulateDrop(q);
   document.getElementById('ec-dropdown').classList.add('open');
-  if(empF.length) renderEC(empF[0],0,empF.length);
+  // Only auto-render card if user has typed something (not on focus-triggered empty search)
+  if(q && empF.length) renderEC(empF[0],0,empF.length);
 }
 
 function ecPopulateDrop(q){
@@ -1003,8 +1007,8 @@ function renderEC(r, idx, tot){
     });
   }
 
-  // Remark previous value
-  var empId = r[C.empId]||'';
+  // Use email as the remark key — matches Email_ID in column A of the sheet
+  var empId = r[C.email]||r[C.empId]||'';
   var prevRemark = remarkCache[empId] || null;
 
   var html = ''
@@ -1050,11 +1054,8 @@ function renderEC(r, idx, tot){
     + '<div class="emg">'
     + metricCard('Avg Mins',     minsVal||'—',  minsVal>=480?'var(--ac3)':(minsVal>=450?'var(--ac)':'var(--ac2)'),  minsStar,  '#00d4ff')
     + metricCard('Leaves',       leavesVal||'0', leavesVal>=20?'var(--red)':(leavesVal>=15?'var(--ac2)':'var(--ac3)'), leavesStar, '#ff4757')
-    + metricCard('Leave Rating', lvRtgVal||'—', lvRtgVal>=3?'var(--red)':'var(--ac3)', lvRtgVal>0?Math.min(5,lvRtgVal):null, '#f7c948')
     + metricCard('OT Count',     otVal||'0',    otVal>0?'var(--ac3)':'var(--mu)',   otStar,   '#00e5a0')
-    + metricCard('OT Rating',    otRtgVal||'—', 'var(--ac)',   otRtgVal>0?otRtgVal:null, '#00d4ff')
     + metricCard('Holiday OT',   holOtVal||'0', holOtVal>0?'var(--ac5)':'var(--mu)', holStar,   '#c084fc')
-    + metricCard('Holiday Rtg',  holRtgVal||'—','var(--ac5)',  holRtgVal>0?holRtgVal:null, '#c084fc')
     + (r[C.variable]?metricCard('Variable', fmt(r[C.variable]), 'var(--ac2)', null):'')
     + '</div>'
 
