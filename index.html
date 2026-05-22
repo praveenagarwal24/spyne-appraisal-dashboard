@@ -341,6 +341,12 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
       <div class="sbi" onclick="goPg('drill',this);ddTab(null,'dd-e')"><span class="ic">✅</span>By Eligibility</div>
       <div class="sbi" onclick="goPg('drill',this);ddTab(null,'dd-l')"><span class="ic">🌿</span>By Leaves<span class="bdg b-rd" id="sb-hl">0</span></div>
       <div class="sbi" onclick="goPg('drill',this);ddTab(null,'dd-m')"><span class="ic">🗂</span>Master Sheet<span class="bdg b-gd" id="sb-ms">—</span></div>
+      <div id="gid-tool" style="margin:4px 10px 8px;background:rgba(247,201,72,.07);border:1px solid rgba(247,201,72,.2);border-radius:8px;padding:8px 10px;display:none;">
+        <div style="font-size:9px;color:var(--ac4);font-family:DM Mono,monospace;letter-spacing:.5px;margin-bottom:5px">MASTER SHEET GID</div>
+        <input id="gid-input" type="text" placeholder="e.g. 1102611642" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--b1);border-radius:5px;padding:5px 7px;color:var(--tx);font-family:DM Mono,monospace;font-size:11px;outline:none;" />
+        <button onclick="tryGid()" style="margin-top:6px;width:100%;background:var(--ac4);color:#000;border:none;border-radius:5px;padding:5px 0;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:.5px">LOAD WITH THIS GID</button>
+        <div id="gid-hint" style="font-size:9px;color:var(--mu);margin-top:5px;line-height:1.5">Open sheet → click tab → copy #gid=XXXX from URL</div>
+      </div>
     </div>
     <div class="sb-bot">
       <div class="sb-live"><div class="sb-ld"></div><span id="sb-lv">Live</span></div>
@@ -427,11 +433,20 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 // ═══════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════
+// ─── Base published URL (Entire document published as CSV) ───────────────
+var _BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTptLnEPb1xL3D9O5aF2zQeBd2moUhTlmOu_KzvELMpiLN3n0TFOKEEbqRTmXIBRe0DhInjJD1xRxnU/pub?output=csv';
+
+// ─── HOW TO FIND A TAB'S GID ─────────────────────────────────────────────
+// 1. Open your Google Sheet in browser
+// 2. Click the specific tab (e.g. "Master_Sheet")
+// 3. Look at the URL bar — it ends with  #gid=XXXXXXXXX
+// 4. Copy that number and use it below as  _BASE + '&gid=XXXXXXXXX'
+// ─────────────────────────────────────────────────────────────────────────
+
 var CFG = {
-  appraisal: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTptLnEPb1xL3D9O5aF2zQeBd2moUhTlmOu_KzvELMpiLN3n0TFOKEEbqRTmXIBRe0DhInjJD1xRxnU/pub?output=csv&gid=537777663',
-  master: '',
+  appraisal: _BASE + '&gid=537777663',   // Final_Appraisal tab ✓
+  master:    _BASE + '&gid=3354951'   // Master_Sheet tab ✓,  // Master_Sheet tab ← UPDATE GID if wrong
   // Google Apps Script Web App URL for saving remarks
-  // Deploy a GAS that accepts POST with {empId, status, remark} and writes to sheet
   remarksWebAppUrl: 'https://script.google.com/macros/s/AKfycbyYMqSA1TFvZqgwqvq1D_-570xf4eIOmEkFUHhwG9Wvuq64HW7-yCAIQ_s7UdSMlgg/exec'
 };
 
@@ -668,12 +683,24 @@ function init(){
       setP(65, CFG.master?'Fetching Master_Sheet…':'Building…');
       if(CFG.master){
         return fetch(CFG.master)
-          .then(function(r){ return r.ok?r.text():Promise.reject('master fail'); })
+          .then(function(r){
+            if(!r.ok) throw new Error('HTTP '+r.status+' fetching Master_Sheet. Check GID in CFG.master.');
+            return r.text();
+          })
           .then(function(txt2){
-            var p2=toObjects(parseCSV(txt2)); MH=p2.headers; MD=p2.data;
+            var p2=toObjects(parseCSV(txt2));
+            MH=p2.headers; MD=p2.data;
+            // Sanity check: if first header looks like HTML we got an error page
+            if(MH.length && /<!doctype|<html/i.test(MH[0])){
+              console.warn('Master_Sheet: got HTML instead of CSV — check GID in CFG.master');
+              MH=[]; MD=[];
+              document.getElementById('sb-ms').textContent='GID?';
+              return;
+            }
             detectMasterCols();
             document.getElementById('sb-ms').textContent=MD.length;
-          }).catch(function(e){ console.warn('Master_Sheet:',e); });
+            console.log('Master_Sheet loaded:',MD.length,'rows, cols:',MH.slice(0,8).join(', '));
+          }).catch(function(e){ console.warn('Master_Sheet failed:',e.message||e); document.getElementById('sb-ms').textContent='ERR'; });
       }
     })
     .then(function(){
@@ -1550,6 +1577,28 @@ function renderMomSection(momData, mTrend){
     +'</div></div></div>';
 }
 
+
+function tryGid(){
+  var gid=document.getElementById('gid-input').value.trim();
+  if(!gid){document.getElementById('gid-hint').textContent='Enter a GID number first';return;}
+  document.getElementById('gid-hint').textContent='Loading…';
+  var url='https://docs.google.com/spreadsheets/d/e/2PACX-1vTptLnEPb1xL3D9O5aF2zQeBd2moUhTlmOu_KzvELMpiLN3n0TFOKEEbqRTmXIBRe0DhInjJD1xRxnU/pub?output=csv&gid='+gid;
+  fetch(url).then(function(r){return r.text();}).then(function(txt){
+    var p=toObjects(parseCSV(txt));
+    if(!p.headers.length||/<!doctype/i.test(p.headers[0])){
+      document.getElementById('gid-hint').textContent='❌ No data — wrong GID?';return;
+    }
+    document.getElementById('gid-hint').innerHTML='✓ Got '+p.data.length+' rows<br>Cols: '+p.headers.slice(0,5).join(', ')+'…<br><b style="color:var(--ac3)">Looks correct! Updating CFG…</b>';
+    CFG.master=url;
+    MH=[]; MD=[];
+    fetch(url).then(function(r2){return r2.text();}).then(function(txt2){
+      var p2=toObjects(parseCSV(txt2)); MH=p2.headers; MD=p2.data;
+      detectMasterCols();
+      document.getElementById('sb-ms').textContent=MD.length;
+      buildAll();
+    });
+  }).catch(function(e){document.getElementById('gid-hint').textContent='❌ Error: '+e.message;});
+}
 // ═══════════════════════════════════════════════════
 // SIDEBAR TOGGLE
 // ═══════════════════════════════════════════════════
