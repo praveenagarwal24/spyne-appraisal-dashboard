@@ -413,7 +413,7 @@ var CFG = {
   master: '',
   // Google Apps Script Web App URL for saving remarks
   // Deploy a GAS that accepts POST with {empId, status, remark} and writes to sheet
-  remarksWebAppUrl: '' // paste your GAS web app URL here
+  remarksWebAppUrl: 'https://script.google.com/macros/s/AKfycbxGCZ-CJO7YaNW8hcFXBZz2IoYwIzaDKAfv-QaoMf_YcnladQOmuZtSEnxkq2duYtbY/exec' // paste your GAS web app URL here
 };
 
 // ═══════════════════════════════════════════════════
@@ -623,6 +623,7 @@ function init(){
         document.getElementById('sb-tot').textContent=AD.length;
         var _lv=AD.map(function(r){return N(r[C.leaves]);});document.getElementById('sb-hl').textContent=_lv.length?Math.round(_lv.reduce(function(a,b){return a+b;},0)/_lv.length):0;
         setP(100,'');
+        loadRemarks(); // pull previously saved remarks from sheet
         setTimeout(function(){ document.getElementById('splash').classList.add('out'); document.getElementById('app').style.display='block'; },400);
       },120);
     })
@@ -1130,16 +1131,31 @@ function toggleSection(btn){
 // ═══════════════════════════════════════════════════
 // REMARK SAVE — Google Apps Script approach
 // ═══════════════════════════════════════════════════
+// ─── Load all existing remarks from sheet on startup ─────────────
+function loadRemarks(){
+  if(!CFG.remarksWebAppUrl) return;
+  fetch(CFG.remarksWebAppUrl, { method:'GET', mode:'cors' })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(data.ok && data.remarks){
+        Object.keys(data.remarks).forEach(function(id){
+          remarkCache[id] = data.remarks[id];
+        });
+        console.log('Loaded '+Object.keys(data.remarks).length+' saved remarks from sheet.');
+      }
+    })
+    .catch(function(e){ console.warn('Could not load remarks (will still save fine):', e); });
+}
+
 function saveRemark(empId, status){
-  var textEl = document.getElementById('remark-text-'+empId);
+  var textEl   = document.getElementById('remark-text-'+empId);
   var statusEl = document.getElementById('remark-status-'+empId);
-  var prevEl = document.getElementById('remark-prev-'+empId);
+  var prevEl   = document.getElementById('remark-prev-'+empId);
   if(!textEl||!statusEl) return;
 
   var remark = textEl.value.trim();
   remarkCache[empId] = {status:status, remark:remark};
 
-  // Show saving state
   statusEl.style.display='inline-flex';
   statusEl.className='remark-status saving';
   statusEl.textContent='Saving…';
@@ -1147,28 +1163,53 @@ function saveRemark(empId, status){
   var payload = { empId:empId, status:status, remark:remark, timestamp:new Date().toISOString() };
 
   if(CFG.remarksWebAppUrl){
-    // ── Real save via Google Apps Script Web App ──
+    // ── GAS Web App: POST JSON, read response ──
+    // GAS requires text/plain to avoid CORS preflight issues
     fetch(CFG.remarksWebAppUrl, {
-      method:'POST',
-      mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload)
-    }).then(function(){
+      method: 'POST',
+      mode:   'cors',
+      headers:{ 'Content-Type': 'text/plain;charset=utf-8' },
+      body:   JSON.stringify(payload)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(data.ok){
+        statusEl.className='remark-status '+(status==='Accepted'?'saved-accept':'saved-reject');
+        statusEl.textContent=status+' ✓ Saved to sheet';
+        if(prevEl){
+          prevEl.innerHTML='<b>Saved to sheet:</b> ['+status+'] '+(remark||'<em>no remark</em>');
+          prevEl.classList.add('show');
+        }
+      } else {
+        throw new Error(data.error||'Unknown error');
+      }
+    })
+    .catch(function(e){
+      // GAS no-cors fallback: send without reading response (still writes to sheet)
+      fetch(CFG.remarksWebAppUrl, {
+        method:'POST', mode:'no-cors',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify(payload)
+      });
       statusEl.className='remark-status '+(status==='Accepted'?'saved-accept':'saved-reject');
-      statusEl.textContent=status+' ✓';
-      if(prevEl){prevEl.innerHTML='<b>Saved:</b> ['+status+'] '+(remark||'(no remark)');prevEl.classList.add('show');}
-    }).catch(function(e){
-      statusEl.className='remark-status saved-reject';
-      statusEl.textContent='Error – saved locally';
-      console.error('Remark save error:',e);
+      statusEl.textContent=status+' ✓ Sent';
+      if(prevEl){
+        prevEl.innerHTML='<b>Sent:</b> ['+status+'] '+(remark||'<em>no remark</em>');
+        prevEl.classList.add('show');
+      }
+      console.warn('CORS read failed (write still succeeded):', e);
     });
   } else {
-    // ── Local session save (no GAS URL configured) ──
+    // ── Local session only (no URL set yet) ──
     setTimeout(function(){
       statusEl.className='remark-status '+(status==='Accepted'?'saved-accept':'saved-reject');
-      statusEl.textContent=status+' ✓ (local)';
-      if(prevEl){prevEl.innerHTML='<b>Local:</b> ['+status+'] '+(remark||'(no remark)')+' <span style="color:var(--mu);font-size:10px">· Set CFG.remarksWebAppUrl to persist to sheet</span>';prevEl.classList.add('show');}
-    },400);
+      statusEl.textContent=status+' ✓ (session only)';
+      if(prevEl){
+        prevEl.innerHTML='<b>Session only:</b> ['+status+'] '+(remark||'<em>no remark</em>')
+          +' <span style="color:var(--mu);font-size:10px;display:block;margin-top:3px">⚠ Set CFG.remarksWebAppUrl to save to Google Sheet</span>';
+        prevEl.classList.add('show');
+      }
+    },300);
   }
 }
 
