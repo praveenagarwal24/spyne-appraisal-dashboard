@@ -1161,75 +1161,8 @@ function renderEC(r, idx, tot){
   var hikeVal    = C.hike ? N(r[C.hike]) : 0;
   if(!newAnnual && hikeVal && N(r[C.ctc])){ newAnnual=Math.round(N(r[C.ctc])*(1+hikeVal/100)); }
 
-  // Extra fields
-  var std={}; Object.values(C).forEach(function(v){if(v)std[v]=1;});
-  var extra=AH.filter(function(h){return !std[h]&&r[h];});
-  var mExtra=[], mTrend=[];
-  var momData=getMomData(r[C.empId]);
-  // Build mExtra from first master row (non-standard HR fields)
-  if(mr){
-    // Fields to skip in HR Data section (already shown in metric cards or MoM chart)
-    var skipHR={};
-    [MC.empId,MC.name,MC.monthYear,MC.actualMins,MC.leaves,MC.ot].forEach(function(v){if(v)skipHR[v]=1;});
-    MH.forEach(function(h){
-      if(skipHR[h]) return;
-      var l=h.toLowerCase();
-      var isMon=/jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/.test(l);
-      if(!isMon && mr[h]) mExtra.push({l:h,v:mr[h]});
-    });
-  }
-
-  // Use email as the remark key — matches Email_ID in column A of the sheet
-  var empId = r[C.email]||r[C.empId]||'';
-  var prevRemark = remarkCache[empId] || null;
-
-  var html = ''
-    // ── Search is rendered outside, we only render content here ──
-    // Navigation
-    + '<div class="enav" style="margin-bottom:14px">'
-    + '<button class="nb" onclick="navE(-1)">\u2190 Prev</button>'
-    + '<span class="nc">'+(idx+1)+' of '+tot+'</span>'
-    + '<button class="nb" onclick="navE(1)">Next \u2192</button>'
-    + '</div>'
-
-    // ── Hero ──
-    + '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);padding:28px 30px;">'
-    + '<div class="ehero">'
-    + '<div class="ephW">'
-    + (photoSrc
-        ? '<img class="eph" src="'+photoSrc+'" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'" alt=""><div class="eini" style="display:none">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>'
-        : '<div class="eini">'+(r[C.name]||'?').charAt(0).toUpperCase()+'</div>')
-    + '</div>'
-    + '<div style="flex:1;min-width:0">'
-    + '<div class="ehN">'+(r[C.name]||'—')+'</div>'
-    + '<div class="ehID">'+(r[C.empId]||'—')+(mr&&mr[MC.desig]?' · '+mr[MC.desig]:'')+'</div>'
-    + '<div class="ehE">'+(r[C.email]||'—')+'</div>'
-    // ── Change 5: NO rating tag under email ──
-    + '<div class="ehtg">'
-    + (mr&&mr[MC.dept]?'<span class="tg tgD">'+mr[MC.dept]+'</span>':'<span class="tg tgD">Delivery</span>')
-    + (mr&&mr[MC.team]?'<span class="tg tgP">'+mr[MC.team]+'</span>':'')
-    + '</div>'
-    + '</div></div>'
-
-    // ── METRIC CARDS with inline stars ──
-    // Row 1: CTC info (no star ratings needed)
-    + '<div class="emg">'
-    + metricCard('Annual CTC',    fmt(r[C.ctc]),  'var(--ac4)', null)
-    + metricCard('Monthly CTC',   fmt(r[C.ctcM]), 'var(--ac4)', null)
-    + metricCard('DOJ',           r[C.doj]||'—',  'var(--tx)',  null)
-    + (mr&&mr[MC.manager]?metricCard('Manager', mr[MC.manager], 'var(--tx)', null):'')
-    + (mr&&mr[MC.loc]    ?metricCard('Location', mr[MC.loc],    'var(--tx)', null):'')
-    + (mr&&mr[MC.band]   ?metricCard('Band/Grade',mr[MC.band],  'var(--ac5)',null):'')
-    + '</div>'
-
-    // Row 2: Performance metrics WITH star ratings
-    + '<div class="emg">'
-    + metricCard('Avg Mins',     minsVal||'—',  minsVal>=480?'var(--ac3)':(minsVal>=450?'var(--ac)':'var(--ac2)'),  minsStar,  '#00d4ff')
-    + metricCard('Leaves',       leavesVal||'0', leavesVal>=20?'var(--red)':(leavesVal>=15?'var(--ac2)':'var(--ac3)'), leavesStar, '#ff4757')
-    + metricCard('OT Count',     otVal||'0',    otVal>0?'var(--ac3)':'var(--mu)',   otStar,   '#00e5a0')
-    + metricCard('Holiday OT',   holOtVal||'0', holOtVal>0?'var(--ac5)':'var(--mu)', holStar,   '#c084fc')
-    + (r[C.variable]?metricCard('Variable', fmt(r[C.variable]), 'var(--ac2)', null):'')
-    + '</div>'
+    // ── Month-on-Month 3-metric section ──
+    + renderMomSection(momData)
 
     // ── COLLAPSIBLE: Final Rating (Change 4: hidden by default) ──
     + '<div class="hike-section">'
@@ -1267,9 +1200,6 @@ function renderEC(r, idx, tot){
 
     // ── Extra fields ──
     + (extra.length?'<div class="msec"><div class="msec-title">All Fields <span class="ms-pill">Final_Appraisal</span></div><div class="mfg">'+extra.map(function(h){return '<div class="mfc"><div class="mfl">'+h+'</div><div class="mfv">'+r[h]+'</div></div>';}).join('')+'</div></div>':'')
-
-    // ── Month-on-Month 3-metric section ──
-    + renderMomSection(momData)
 
     // ── Change 6: REMARK SECTION ──
     + '<div class="remark-section">'
