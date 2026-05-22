@@ -413,7 +413,7 @@ var CFG = {
   master: '',
   // Google Apps Script Web App URL for saving remarks
   // Deploy a GAS that accepts POST with {empId, status, remark} and writes to sheet
-  remarksWebAppUrl: '' // paste your GAS web app URL here
+  remarksWebAppUrl: 'https://script.google.com/macros/s/AKfycbyYMqSA1TFvZqgwqvq1D_-570xf4eIOmEkFUHhwG9Wvuq64HW7-yCAIQ_s7UdSMlgg/exec'
 };
 
 // ═══════════════════════════════════════════════════
@@ -893,7 +893,6 @@ function buildEL(){
     + '<div style="font-size:42px;opacity:.3">👤</div>'
     + '<div style="font-size:13px;font-family:DM Mono,monospace;letter-spacing:1px">Search or click an employee to view their card</div>'
     + '<div style="font-size:11px;opacity:.6">'+empF.length+' employees loaded</div>'
-    + (!CFG.remarksWebAppUrl?'<div style="margin-top:8px;background:rgba(247,201,72,.1);border:1px solid rgba(247,201,72,.3);padding:10px 16px;border-radius:8px;font-size:11px;color:var(--ac4);font-family:DM Mono,monospace;text-align:center;max-width:420px">⚠ CFG.remarksWebAppUrl not set — remarks will not save to sheet.<br>Paste your GAS Web App URL in the HTML config (line ~416).</div>':'')
     + '</div></div>';
   // Do NOT pre-select any employee
 }
@@ -1106,6 +1105,7 @@ function renderEC(r, idx, tot){
     // ── Change 6: REMARK SECTION ──
     + '<div class="remark-section">'
     + '<div class="remark-title">Appraisal Remark</div>'
+    + (!CFG.remarksWebAppUrl?'<div style="font-size:10px;color:var(--ac4);font-family:DM Mono,monospace;padding:7px 10px;background:rgba(247,201,72,.07);border:1px solid rgba(247,201,72,.2);border-radius:6px;margin-bottom:12px;letter-spacing:.5px">⚠ GAS URL not set — saves will be session-only. See setup guide below.</div>':'')
     + (prevRemark?'<div class="remark-prev show" id="remark-prev-'+empId+'"><b>Previous:</b> ['+prevRemark.status+'] '+prevRemark.remark+'</div>':'<div class="remark-prev" id="remark-prev-'+empId+'"></div>')
     + '<textarea class="remark-textarea" id="remark-text-'+empId+'" placeholder="Add remarks, notes or feedback for '+( r[C.name]||'this employee')+'…">'+(prevRemark?prevRemark.remark:'')+'</textarea>'
     + '<div class="remark-btns">'
