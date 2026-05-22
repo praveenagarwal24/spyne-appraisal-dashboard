@@ -603,68 +603,82 @@ function detectCols(){
   });
 }
 function detectMasterCols(){
-  MC={empId:'',name:'',dept:'',desig:'',manager:'',loc:'',doj:'',band:'',team:''};
+  MC={empId:'',name:'',dept:'',desig:'',manager:'',loc:'',doj:'',band:'',team:'',
+      monthYear:'', actualMins:'', leaves:'', ot:''};
   MH.forEach(function(h){
     var l=h.toLowerCase().replace(/[\s_]+/g,'');
-    if(!MC.empId  && /empid/.test(l))           MC.empId=h;
-    if(!MC.name   && /^name$/.test(l))           MC.name=h;
-    if(!MC.dept   && /dept/.test(l))             MC.dept=h;
-    if(!MC.desig  && /desig|title|position/.test(l)) MC.desig=h;
-    if(!MC.manager&& /manager|reporting/.test(l)) MC.manager=h;
-    if(!MC.loc    && /location|city/.test(l))    MC.loc=h;
-    if(!MC.doj    && /doj|joining/.test(l))      MC.doj=h;
-    if(!MC.band   && /band|grade/.test(l))       MC.band=h;
-    if(!MC.team   && /team/.test(l))             MC.team=h;
+    var raw=h.toLowerCase();
+    if(!MC.empId     && /empid/.test(l))                          MC.empId=h;
+    if(!MC.name      && /^name$/.test(l))                          MC.name=h;
+    if(!MC.dept      && /dept/.test(l))                            MC.dept=h;
+    if(!MC.desig     && /desig|title|position/.test(l))            MC.desig=h;
+    if(!MC.manager   && /manager|reporting/.test(l))               MC.manager=h;
+    if(!MC.loc       && /location|city/.test(l))                   MC.loc=h;
+    if(!MC.doj       && /doj|joining/.test(l))                     MC.doj=h;
+    if(!MC.band      && /band|grade/.test(l))                      MC.band=h;
+    if(!MC.team      && /team/.test(l))                            MC.team=h;
+    // ── Month-on-Month columns ──
+    if(!MC.monthYear && /month.?year|monthyear|month-year/.test(raw)) MC.monthYear=h;
+    if(!MC.actualMins&& /actual.*avg.*min|actual.*min|actualavg/.test(raw)) MC.actualMins=h;
+    if(!MC.leaves    && /^leaves$/.test(l))                        MC.leaves=h;
+    if(!MC.ot        && /^ot$/.test(l))                            MC.ot=h;
   });
+  console.log('MC detected:', JSON.stringify({empId:MC.empId,monthYear:MC.monthYear,actualMins:MC.actualMins,leaves:MC.leaves,ot:MC.ot}));
 }
 
-// Parse Master sheet month-on-month data for the 3 key metrics:
-// "Actual AVG. Mins", "Leaves", "OT"
-// Column names are expected to contain a month keyword AND a metric keyword
-// e.g. "Apr Actual AVG. Mins", "May Leaves", "Jun OT"
-function getMomData(mr){
-  if(!mr) return null;
-  var MONTHS=['apr','may','jun','jul','aug','sep','oct','nov','dec','jan','feb','mar'];
+// Build MoM data from ALL rows for this employee (row-per-month structure)
+// Columns: Month-Year | ... | Actual AVG. Mins | ... | Leaves | ... | OT
+function getMomData(empId){
+  if(!MC.monthYear && !MC.actualMins && !MC.leaves && !MC.ot) return null;
+  var rows=getAllMasterRows(empId);
+  if(!rows.length) return null;
   var metrics={
-    mins:  {label:'Actual AVG. Mins', color:'#00d4ff', cols:{}, _max:1},
-    leaves:{label:'Leaves',           color:'#ff4757', cols:{}, _max:1},
-    ot:    {label:'OT',               color:'#00e5a0', cols:{}, _max:1}
+    mins:  {label:'Actual AVG. Mins', color:'#00d4ff', points:[], _max:1},
+    leaves:{label:'Leaves',           color:'#ff4757', points:[], _max:1},
+    ot:    {label:'OT',               color:'#00e5a0', points:[], _max:1}
   };
-  MH.forEach(function(h){
-    var l=h.toLowerCase();
-    var lc=l.replace(/[^a-z0-9]/g,'');
-    // Which month?
-    var mon=null;
-    MONTHS.forEach(function(m){ if(l.indexOf(m)>=0 && !mon) mon=m; });
-    if(!mon) return;
-    var v=mr[h];
-    // Which metric?
-    if(/avgmin|actualmin|actualavg|avg.*min/.test(lc))
-      metrics.mins.cols[mon]={h:h, v:v};
-    else if(/leaves/.test(lc) && !/rating/.test(lc))
-      metrics.leaves.cols[mon]={h:h, v:v};
-    else if(/(^|\s)ot($|\s)|[^a-z]ot$|^ot[^a-z]/.test(l) && !/rating|holiday/.test(l))
-      metrics.ot.cols[mon]={h:h, v:v};
-    // Also catch exact "ot" at end of stripped string
-    else if(lc.replace(/[a-z]{3}/,'').replace(/[0-9]/g,'')==='' && /ot$/.test(lc) && !/rating|holiday/.test(lc))
-      metrics.ot.cols[mon]={h:h, v:v};
+  rows.forEach(function(row){
+    var mon=MC.monthYear?row[MC.monthYear]:'?';
+    if(MC.actualMins) metrics.mins.points.push({mon:mon, v:parseFloat(row[MC.actualMins])||0});
+    if(MC.leaves)     metrics.leaves.points.push({mon:mon, v:parseFloat(row[MC.leaves])||0});
+    if(MC.ot)         metrics.ot.points.push({mon:mon, v:parseFloat(row[MC.ot])||0});
   });
-  // Check if at least one metric has data
-  var allMons={};
-  Object.keys(metrics).forEach(function(k){ Object.keys(metrics[k].cols).forEach(function(m){ allMons[m]=1; }); });
-  var orderedMonths=MONTHS.filter(function(m){ return allMons[m]; });
-  if(!orderedMonths.length) return null;
   // Compute max per metric for bar scaling
+  var hasAny=false;
   Object.keys(metrics).forEach(function(k){
-    var vals=orderedMonths.map(function(m){ return metrics[k].cols[m]?parseFloat(metrics[k].cols[m].v)||0:0; });
-    metrics[k]._max=Math.max.apply(null,vals)||1;
+    if(!metrics[k].points.length) return;
+    var mx=Math.max.apply(null,metrics[k].points.map(function(p){return p.v;}))||1;
+    metrics[k]._max=mx;
+    hasAny=true;
   });
-  return {months:orderedMonths, metrics:metrics};
+  return hasAny ? metrics : null;
 }
 
 function getMaster(empId){
   if(!MD.length||!MC.empId) return null;
+  // Return first matching row (used for HR fields like name/dept/manager)
   return MD.find(function(m){return (m[MC.empId]||'').trim()===(empId||'').trim();})||null;
+}
+
+// Get ALL master rows for an employee, sorted chronologically by Month-Year
+var MONTH_ORDER={apr:1,may:2,jun:3,jul:4,aug:5,sep:6,oct:7,nov:8,dec:9,jan:10,feb:11,mar:12};
+function getAllMasterRows(empId){
+  if(!MD.length||!MC.empId) return [];
+  var rows=MD.filter(function(m){return (m[MC.empId]||'').trim()===(empId||'').trim();});
+  if(!MC.monthYear) return rows;
+  rows.sort(function(a,b){
+    // Parse "Apr-25", "May-25" etc
+    var pa=parseMY(a[MC.monthYear]||''), pb=parseMY(b[MC.monthYear]||'');
+    if(pa.yr!==pb.yr) return pa.yr-pb.yr;
+    return (MONTH_ORDER[pa.mo]||99)-(MONTH_ORDER[pb.mo]||99);
+  });
+  return rows;
+}
+function parseMY(s){
+  var m=s.toLowerCase().match(/([a-z]{3})[-\s]*(\d{2,4})/);
+  if(!m) return {mo:'',yr:0};
+  var yr=parseInt(m[2]); if(yr<100) yr+=2000;
+  return {mo:m[1], yr:yr, label:s};
 }
 
 // ═══════════════════════════════════════════════════
@@ -1151,17 +1165,17 @@ function renderEC(r, idx, tot){
   var std={}; Object.values(C).forEach(function(v){if(v)std[v]=1;});
   var extra=AH.filter(function(h){return !std[h]&&r[h];});
   var mExtra=[], mTrend=[];
-  var momData=getMomData(mr);
-  // Build mExtra (non-month, non-standard master fields)
-  var momCols={};
-  if(momData) Object.keys(momData.metrics).forEach(function(k){Object.keys(momData.metrics[k].cols).forEach(function(m){if(momData.metrics[k].cols[m])momCols[momData.metrics[k].cols[m].h]=1;});});
+  var momData=getMomData(r[C.empId]);
+  // Build mExtra from first master row (non-standard HR fields)
   if(mr){
+    // Fields to skip in HR Data section (already shown in metric cards or MoM chart)
+    var skipHR={};
+    [MC.empId,MC.name,MC.monthYear,MC.actualMins,MC.leaves,MC.ot].forEach(function(v){if(v)skipHR[v]=1;});
     MH.forEach(function(h){
-      if(h===MC.empId) return;
+      if(skipHR[h]) return;
       var l=h.toLowerCase();
-      var isMon=/jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|month|q[1-4]/.test(l);
-      if(isMon) mTrend.push({l:h,v:mr[h]}); // keep legacy fallback
-      else if(mr[h]&&!momCols[h]) mExtra.push({l:h,v:mr[h]});
+      var isMon=/jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/.test(l);
+      if(!isMon && mr[h]) mExtra.push({l:h,v:mr[h]});
     });
   }
 
@@ -1256,7 +1270,7 @@ function renderEC(r, idx, tot){
     + (mExtra.length?'<div class="msec"><div class="msec-title">HR Data <span class="ms-pill">Master_Sheet</span></div><div class="mfg">'+mExtra.map(function(f){return '<div class="mfc"><div class="mfl">'+f.l+'</div><div class="mfv">'+f.v+'</div></div>';}).join('')+'</div></div>':'')
 
     // ── Month-on-Month 3-metric section ──
-    + renderMomSection(momData, mTrend)
+    + renderMomSection(momData)
 
     // ── Change 6: REMARK SECTION ──
     + '<div class="remark-section">'
@@ -1542,73 +1556,49 @@ function ddTab(btn,id){
 // ═══════════════════════════════════════════════════
 // MONTH-ON-MONTH RENDER
 // ═══════════════════════════════════════════════════
-function renderMomSection(momData, mTrend){
-  // If we have structured mom data, render the 3-metric table view
-  if(momData && momData.months.length){
-    var months=momData.months;
-    var metrics=momData.metrics;
-    var metricKeys=Object.keys(metrics).filter(function(k){return Object.keys(metrics[k].cols).length>0;});
-    if(!metricKeys.length) return '';
+function renderMomSection(momData){
+  if(!momData) return '';
+  var metricKeys=Object.keys(momData).filter(function(k){return momData[k].points&&momData[k].points.length;});
+  if(!metricKeys.length) return '';
 
-    // Build max values for bar scaling
-    metricKeys.forEach(function(k){
-      var vals=months.map(function(m){return metrics[k].cols[m]?parseFloat(metrics[k].cols[m].v)||0:0;});
-      var mx=Math.max.apply(null,vals)||1;
-      metrics[k]._max=mx;
-    });
+  var out='<div class="msec"><div class="msec-title">Month-on-Month Trend <span class="ms-pill">Master_Sheet</span></div>';
 
-    // Month label abbreviations for display
-    var MON_ABBR={jan:'Jan',feb:'Feb',mar:'Mar',apr:'Apr',may:'May',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',oct:'Oct',nov:'Nov',dec:'Dec'};
+  // Legend
+  out+='<div class="mom-legend">';
+  metricKeys.forEach(function(k){
+    out+='<div class="mom-leg-item"><div class="mom-leg-dot" style="background:'+momData[k].color+'"></div>'+momData[k].label+'</div>';
+  });
+  out+='</div>';
 
-    var out='<div class="msec"><div class="msec-title">Month-on-Month Trend <span class="ms-pill">Master_Sheet</span></div>';
-
-    // Legend
-    out+='<div class="mom-legend">';
-    metricKeys.forEach(function(k){
-      out+='<div class="mom-leg-item"><div class="mom-leg-dot" style="background:'+metrics[k].color+'"></div>'+metrics[k].label+'</div>';
-    });
+  // One row of bars per metric
+  metricKeys.forEach(function(k){
+    var met=momData[k];
+    out+='<div style="margin-bottom:20px">';
+    // metric label
+    out+='<div style="font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--mu);font-family:DM Mono,monospace;margin-bottom:8px;display:flex;align-items:center;gap:8px">';
+    out+='<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+met.color+'"></span>'+met.label;
     out+='</div>';
-
-    // For each metric, render a row of bars
-    metricKeys.forEach(function(k){
-      var met=metrics[k];
-      out+='<div style="margin-bottom:18px">';
-      out+='<div style="font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--mu);font-family:DM Mono,monospace;margin-bottom:8px;display:flex;align-items:center;gap:8px">';
-      out+='<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+met.color+'"></span>'+met.label;
+    out+='<div class="mom-wrap"><div style="display:flex;gap:8px;align-items:flex-end;min-width:max-content">';
+    met.points.forEach(function(pt){
+      var v=pt.v, pct=Math.min(100,(v/met._max)*100);
+      var hasVal=v>0;
+      var barCol=met.color;
+      if(k==='mins')  barCol=v>=480?'#00e5a0':(v>=420?'#00d4ff':'#f7c948');
+      if(k==='leaves') barCol=v>=20?'#ff4757':(v>=10?'#ff6b35':'#00e5a0');
+      if(k==='ot')    barCol=v>5?'#00e5a0':(v>0?'#f7c948':'var(--b2)');
+      out+='<div style="display:flex;flex-direction:column;align-items:center;gap:3px;min-width:46px">';
+      out+='<div style="font-size:10px;font-weight:700;color:'+(hasVal?barCol:'var(--mu)')+'">'+( hasVal?v:'—')+'</div>';
+      out+='<div style="height:52px;width:32px;background:var(--b1);border-radius:5px;overflow:hidden;display:flex;align-items:flex-end">';
+      out+='<div style="width:100%;background:'+(hasVal?barCol:'transparent')+';height:'+pct.toFixed(1)+'%;border-radius:5px 5px 0 0"></div>';
       out+='</div>';
-      out+='<div class="mom-wrap"><div style="display:flex;gap:10px;align-items:flex-end;min-width:max-content">';
-      months.forEach(function(m){
-        var cell=met.cols[m];
-        var v=cell?parseFloat(cell.v)||0:null;
-        var pct=v!==null?Math.min(100,(v/met._max)*100):0;
-        var hasVal=v!==null&&v>0;
-        // color logic per metric
-        var barCol=met.color;
-        if(k==='mins'){barCol=v>=480?'#00e5a0':(v>=420?'#00d4ff':'#f7c948');}
-        if(k==='leaves'){barCol=v>=20?'#ff4757':(v>=10?'#ff6b35':'#00e5a0');}
-        if(k==='ot'){barCol=v>5?'#00e5a0':(v>0?'#f7c948':'var(--b2)');}
-        out+='<div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:44px">';
-        out+='<div style="font-size:10px;font-weight:700;color:'+(hasVal?barCol:'var(--mu)')+';">'+(hasVal?v:'—')+'</div>';
-        out+='<div style="height:52px;width:30px;background:var(--b1);border-radius:5px;overflow:hidden;display:flex;align-items:flex-end">';
-        out+='<div style="width:100%;background:'+(hasVal?barCol:'transparent')+';height:'+pct.toFixed(1)+'%;border-radius:5px 5px 0 0;transition:height .4s"></div>';
-        out+='</div>';
-        out+='<div style="font-size:9px;color:var(--mu);font-family:DM Mono,monospace;text-align:center">'+( MON_ABBR[m]||m)+'</div>';
-        out+='</div>';
-      });
-      out+='</div></div>';
+      out+='<div style="font-size:9px;color:var(--mu);font-family:DM Mono,monospace;text-align:center;max-width:46px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+pt.mon+'">'+pt.mon+'</div>';
       out+='</div>';
     });
+    out+='</div></div></div>';
+  });
 
-    out+='</div>';
-    return out;
-  }
-
-  // Fallback: old single-metric bar chart if no structured data but mTrend exists
-  if(!mTrend||!mTrend.length) return '';
-  return '<div class="msec"><div class="msec-title">Month-on-Month Trend <span class="ms-pill">Master_Sheet</span></div>'
-    +'<div style="overflow-x:auto"><div style="display:flex;gap:12px;padding-bottom:6px;min-width:max-content">'
-    +mTrend.map(function(m){var v=parseFloat(m.v)||0;var p=Math.min(100,(v/5)*100);var c=v>=4?'#00e5a0':v>=3?'#f7c948':v>=2?'#ff6b35':'#ff4757';return '<div style="display:flex;flex-direction:column;align-items:center;gap:5px;min-width:48px"><div style="height:56px;width:26px;background:var(--b1);border-radius:4px;overflow:hidden;display:flex;align-items:flex-end"><div style="width:100%;background:'+c+';height:'+p+'%;border-radius:4px"></div></div><div style="font-size:9px;color:var(--mu);font-family:DM Mono,monospace;text-align:center">'+m.l+'</div><div style="font-size:10px;font-weight:700;color:'+c+'">'+m.v+'</div></div>';}).join('')
-    +'</div></div></div>';
+  out+='</div>';
+  return out;
 }
 
 
