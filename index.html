@@ -1267,7 +1267,6 @@ function renderEC(r, idx, tot){
 
     // ── Extra fields ──
     + (extra.length?'<div class="msec"><div class="msec-title">All Fields <span class="ms-pill">Final_Appraisal</span></div><div class="mfg">'+extra.map(function(h){return '<div class="mfc"><div class="mfl">'+h+'</div><div class="mfv">'+r[h]+'</div></div>';}).join('')+'</div></div>':'')
-    + (mExtra.length?'<div class="msec"><div class="msec-title">HR Data <span class="ms-pill">Master_Sheet</span></div><div class="mfg">'+mExtra.map(function(f){return '<div class="mfc"><div class="mfl">'+f.l+'</div><div class="mfv">'+f.v+'</div></div>';}).join('')+'</div></div>':'')
 
     // ── Month-on-Month 3-metric section ──
     + renderMomSection(momData)
