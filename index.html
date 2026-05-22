@@ -445,7 +445,7 @@ var _BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTptLnEPb1xL3D9O5aF
 
 var CFG = {
   appraisal: _BASE + '&gid=537777663',   // Final_Appraisal tab ✓
-  master:    _BASE + '&gid=3354951'   // Master_Sheet tab ✓,  // Master_Sheet tab ← UPDATE GID if wrong
+  master:    _BASE + '&gid=3354951',   // Master_Sheet tab ✓
   // Google Apps Script Web App URL for saving remarks
   remarksWebAppUrl: 'https://script.google.com/macros/s/AKfycbyYMqSA1TFvZqgwqvq1D_-570xf4eIOmEkFUHhwG9Wvuq64HW7-yCAIQ_s7UdSMlgg/exec'
 };
@@ -670,57 +670,91 @@ function getMaster(empId){
 // ═══════════════════════════════════════════════════
 // DATA LOAD
 // ═══════════════════════════════════════════════════
+
+// Fetch with timeout — aborts after ms milliseconds
+function fetchWithTimeout(url, ms){
+  var ctrl=new AbortController();
+  var timer=setTimeout(function(){ ctrl.abort(); }, ms);
+  return fetch(url, {signal:ctrl.signal})
+    .then(function(r){ clearTimeout(timer); return r; })
+    .catch(function(e){ clearTimeout(timer); throw e; });
+}
+
+// Finish building after both sheets (or just appraisal) are loaded
+function finishBuild(){
+  setP(88,'Building dashboard…');
+  setTimeout(function(){
+    buildAll();
+    var now=new Date();
+    document.getElementById('lastUpd').textContent=now.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})+' '+now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('sb-lv').textContent='Live · Google Sheets';
+    document.getElementById('sb-rc').textContent=AD.length+' employees'+(MD.length?' · '+MD.length+' master':'');
+    document.getElementById('sb-tot').textContent=AD.length;
+    var _lv=AD.map(function(r){return N(r[C.leaves]);});
+    document.getElementById('sb-hl').textContent=_lv.length?Math.round(_lv.reduce(function(a,b){return a+b;},0)/_lv.length):0;
+    setP(100,'');
+    loadRemarks();
+    setTimeout(function(){ document.getElementById('splash').classList.add('out'); document.getElementById('app').style.display='block'; },400);
+  },120);
+}
+
 function init(){
   document.getElementById('spErr').style.display='none';
-  setP(15,'Fetching Final_Appraisal…');
-  fetch(CFG.appraisal)
-    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+  setP(10,'Connecting to Google Sheets…');
+
+  // ── Fetch appraisal sheet (8s timeout) ──
+  fetchWithTimeout(CFG.appraisal, 8000)
+    .then(function(r){
+      if(!r.ok) throw new Error('Final_Appraisal: HTTP '+r.status);
+      return r.text();
+    })
     .then(function(txt){
-      setP(50,'Parsing data…');
+      setP(45,'Parsing appraisal data…');
       var p=toObjects(parseCSV(txt));
       AH=p.headers; AD=p.data;
       detectCols();
-      setP(65, CFG.master?'Fetching Master_Sheet…':'Building…');
-      if(CFG.master){
-        return fetch(CFG.master)
-          .then(function(r){
-            if(!r.ok) throw new Error('HTTP '+r.status+' fetching Master_Sheet. Check GID in CFG.master.');
-            return r.text();
-          })
-          .then(function(txt2){
-            var p2=toObjects(parseCSV(txt2));
-            MH=p2.headers; MD=p2.data;
-            // Sanity check: if first header looks like HTML we got an error page
-            if(MH.length && /<!doctype|<html/i.test(MH[0])){
-              console.warn('Master_Sheet: got HTML instead of CSV — check GID in CFG.master');
-              MH=[]; MD=[];
-              document.getElementById('sb-ms').textContent='GID?';
-              return;
-            }
-            detectMasterCols();
-            document.getElementById('sb-ms').textContent=MD.length;
-            console.log('Master_Sheet loaded:',MD.length,'rows, cols:',MH.slice(0,8).join(', '));
-          }).catch(function(e){ console.warn('Master_Sheet failed:',e.message||e); document.getElementById('sb-ms').textContent='ERR'; });
-      }
+      console.log('Appraisal loaded:',AD.length,'rows');
+
+      if(!CFG.master){ finishBuild(); return; }
+
+      // ── Fetch master sheet (8s timeout) — never block dashboard ──
+      setP(65,'Fetching Master Sheet…');
+      fetchWithTimeout(CFG.master, 8000)
+        .then(function(r2){
+          if(!r2.ok) throw new Error('HTTP '+r2.status);
+          return r2.text();
+        })
+        .then(function(txt2){
+          var p2=toObjects(parseCSV(txt2));
+          if(p2.headers.length && /<!doctype|<html/i.test(p2.headers[0])){
+            throw new Error('Got HTML — wrong GID?');
+          }
+          MH=p2.headers; MD=p2.data;
+          detectMasterCols();
+          document.getElementById('sb-ms').textContent=MD.length;
+          console.log('Master loaded:',MD.length,'rows | cols:',MH.slice(0,6).join(', '));
+        })
+        .catch(function(e){
+          var msg=e.name==='AbortError'?'Timeout (8s)':e.message||String(e);
+          console.warn('Master Sheet skipped:',msg);
+          document.getElementById('sb-ms').textContent='—';
+        })
+        .then(function(){ finishBuild(); }); // always continue
     })
-    .then(function(){
-      setP(88,'Building dashboard…');
-      setTimeout(function(){
-        buildAll();
-        var now=new Date();
-        document.getElementById('lastUpd').textContent=now.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})+' '+now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-        document.getElementById('sb-lv').textContent='Live · Google Sheets';
-        document.getElementById('sb-rc').textContent=AD.length+' employees'+(MD.length?' · '+MD.length+' master':'');
-        document.getElementById('sb-tot').textContent=AD.length;
-        var _lv=AD.map(function(r){return N(r[C.leaves]);});document.getElementById('sb-hl').textContent=_lv.length?Math.round(_lv.reduce(function(a,b){return a+b;},0)/_lv.length):0;
-        setP(100,'');
-        loadRemarks(); // pull previously saved remarks from sheet
-        setTimeout(function(){ document.getElementById('splash').classList.add('out'); document.getElementById('app').style.display='block'; },400);
-      },120);
-    })
-    .catch(function(e){ showErr(e.message||String(e)); });
+    .catch(function(e){
+      var msg=e.name==='AbortError'
+        ?'Request timed out after 8s. Check your internet connection or try refreshing.'
+        :'Failed to load data: '+(e.message||String(e));
+      showErr(msg);
+    });
 }
-function refreshData(){ document.getElementById('splash').classList.remove('out'); document.getElementById('app').style.display='none'; AD=[]; MD=[]; setTimeout(init,300); }
+
+function refreshData(){
+  document.getElementById('splash').classList.remove('out');
+  document.getElementById('app').style.display='none';
+  AD=[]; MD=[];
+  setTimeout(init,300);
+}
 
 // ═══════════════════════════════════════════════════
 // BUILD ALL
