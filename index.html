@@ -150,9 +150,12 @@ td{padding:9px 13px;white-space:nowrap;vertical-align:middle;}
 
 /* Search bar at top of detail panel */
 .ec-search-wrap{position:relative;margin-bottom:18px;}
-.ec-search-wrap input{width:100%;background:var(--s2);border:1px solid var(--b1);color:var(--tx);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 16px 10px 38px;border-radius:var(--r);outline:none;transition:border-color .2s;}
+.ec-search-wrap input{width:100%;background:var(--s2);border:1px solid var(--b1);color:var(--tx);font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 42px 10px 38px;border-radius:var(--r);outline:none;transition:border-color .2s;}
 .ec-search-wrap input:focus{border-color:var(--ac);}
 .ec-search-wrap::before{content:'⌕';position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--mu);font-size:18px;pointer-events:none;z-index:1;}
+.ec-clear{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;background:var(--mu);border:none;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:11px;color:var(--bg);font-weight:700;line-height:1;transition:background .15s;z-index:2;}
+.ec-clear:hover{background:var(--tx2);}
+.ec-clear.visible{display:flex;}
 .ec-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);z-index:200;max-height:280px;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.5);display:none;}
 .ec-dropdown.open{display:block;}
 .ec-dd-item{display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--b1);transition:background .12s;}
@@ -886,6 +889,7 @@ function buildEL(){
   var det = document.getElementById('edet');
   det.innerHTML = '<div class="ec-search-wrap">'
     + '<input id="ec-search-input" placeholder="Search employee by name or ID…" autocomplete="off" oninput="ecSearchInput()" onfocus="ecShowDrop()" onblur="ecHideDrop()">'
+    + '<button class="ec-clear" id="ec-clear-btn" onclick="ecClear()" title="Clear search">✕</button>'
     + '<div class="ec-dropdown" id="ec-dropdown"></div>'
     + '</div>'
     + '<div id="ec-card-body">'
@@ -897,8 +901,31 @@ function buildEL(){
   // Do NOT pre-select any employee
 }
 
+function ecClear(){
+  var inp = document.getElementById('ec-search-input');
+  var btn = document.getElementById('ec-clear-btn');
+  var dd  = document.getElementById('ec-dropdown');
+  if(inp) inp.value = '';
+  if(btn) btn.classList.remove('visible');
+  if(dd)  dd.classList.remove('open');
+  empF = AD.slice();
+  empIdx = 0;
+  // Reset card body to the empty placeholder state
+  var cardBody = document.getElementById('ec-card-body');
+  if(cardBody){
+    cardBody.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:260px;gap:14px;color:var(--mu)">'
+      + '<div style="font-size:42px;opacity:.3">👤</div>'
+      + '<div style="font-size:13px;font-family:DM Mono,monospace;letter-spacing:1px">Search or click an employee to view their card</div>'
+      + '<div style="font-size:11px;opacity:.6">'+empF.length+' employees loaded</div>'
+      + '</div>';
+  }
+}
+
 function ecSearchInput(){
   var q = document.getElementById('ec-search-input').value.toLowerCase().trim();
+  // Show/hide clear button
+  var btn = document.getElementById('ec-clear-btn');
+  if(btn) btn.classList.toggle('visible', q.length > 0);
   empF = AD.filter(function(r){
     return (r[C.name]||'').toLowerCase().includes(q)||(r[C.empId]||'').toLowerCase().includes(q)||(r[C.email]||'').toLowerCase().includes(q);
   });
@@ -935,6 +962,9 @@ function ecSelectEmp(i, e){
   var r=empF[i];
   document.getElementById('ec-search-input').value = r[C.name]||'';
   document.getElementById('ec-dropdown').classList.remove('open');
+  // Show the × clear button since a name is now in the input
+  var btn = document.getElementById('ec-clear-btn');
+  if(btn) btn.classList.add('visible');
   renderEC(r, i, empF.length);
 }
 
@@ -948,9 +978,10 @@ function navE(d){
   var ni=Math.max(0,Math.min(empF.length-1,empIdx+d));
   empIdx=ni;
   renderEC(empF[ni],ni,empF.length);
-  // Update search input
   var inp=document.getElementById('ec-search-input');
   if(inp) inp.value=empF[ni][C.name]||'';
+  var btn=document.getElementById('ec-clear-btn');
+  if(btn) btn.classList.add('visible');
 }
 
 // ─── METRIC CARD with inline stars ────────────────
@@ -1226,6 +1257,8 @@ function openEmpCard(empId){
   empIdx=i;
   var inp=document.getElementById('ec-search-input');
   if(inp) inp.value=empF[i][C.name]||'';
+  var btn=document.getElementById('ec-clear-btn');
+  if(btn) btn.classList.add('visible');
   renderEC(empF[i],i,empF.length);
 }
 
